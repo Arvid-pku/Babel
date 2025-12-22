@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Fall of Babel: Architect Mode IV</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        :root {
+            --bg: #050505;
+            --text: #cccccc;
+            --accent: #eebb99; /* Hebrew Gold */
+            --panel-bg: rgba(10, 10, 10, 0.85);
+            --border: #333;
+            --danger: #ff5555;
+        }
+        body {
+            margin: 0; padding: 0; overflow: hidden;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+        canvas { display: block; }
+        
+        /* Cursor styling */
+        body.mode-drag canvas { cursor: grab; }
+        body.mode-drag canvas:active { cursor: grabbing; }
+        body.mode-shatter canvas { cursor: crosshair; }
+        
+        body.mode-draw.tool-free canvas { cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>') 0 24, auto; }
+        body.mode-draw.tool-line canvas { cursor: crosshair; }
+        body.mode-draw.tool-erase canvas { cursor: cell; }
+
+        /* --- UI LAYER --- */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 10;
+        }
+
+        #settings-trigger {
+            position: absolute; top: 20px; right: 20px;
+            font-size: 24px; cursor: pointer; pointer-events: auto;
+            color: #444; transition: color 0.3s, transform 0.5s;
+            z-index: 100;
+        }
+        #settings-trigger:hover { color: var(--text); transform: rotate(90deg); }
+
+        #control-panel {
+            position: absolute; top: 0; right: 0;
+            width: 340px; height: 100%;
+            background: var(--panel-bg);
+            border-left: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+            transform: translateX(100%);
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: auto;
+            padding: 30px;
+            box-sizing: border-box;
+            display: flex; flex-direction: column; gap: 25px;
+            overflow-y: auto;
+        }
+        #control-panel.active { transform: translateX(0); }
+
+        h2 { 
+            font-size: 12px; border-bottom: 1px solid var(--border); 
+            padding-bottom: 5px; margin: 0; color: #666; letter-spacing: 3px; 
+        }
+        
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .label-row { display: flex; justify-content: space-between; font-size: 10px; color: #888; }
+        
+        input[type="range"] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 12px; width: 4px;
+            background: var(--accent); cursor: ew-resize; margin-top: -5px;
+            box-shadow: 0 0 10px rgba(238, 187, 153, 0.5);
+        }
+        input[type="range"]::-webkit-slider-runnable-track { width: 100%; height: 2px; background: #333; }
+
+        textarea {
+            background: #080808; border: 1px solid var(--border);
+            color: var(--text); width: 100%; height: 60px;
+            font-family: inherit; font-size: 10px; padding: 10px;
+            resize: vertical; outline: none;
+        }
+        
+        button {
+            background: transparent; border: 1px solid var(--border);
+            color: var(--text); padding: 10px; font-family: inherit;
+            cursor: pointer; font-size: 10px; transition: all 0.2s;
+            letter-spacing: 1px;
+        }
+        button:hover { background: #222; border-color: var(--text); }
+        button.active { border-color: var(--accent); color: var(--accent); background: rgba(238, 187, 153, 0.1); }
+        
+        .mode-toggle-group { display: flex; gap: 5px; }
+        .mode-toggle-group button { flex: 1; font-size: 9px; padding: 10px 5px; }
+
+        /* Sub controls for Architect mode */
+        #architect-controls { display: none; padding-left: 10px; border-left: 2px solid var(--accent); }
+        .mode-draw #architect-controls { display: flex; }
+
+        #audio-status {
+            position: absolute; bottom: 20px; left: 20px;
+            font-size: 10px; color: var(--accent); letter-spacing: 1px;
+            opacity: 0; transition: opacity 1s;
+        }
+
+        #tooltip {
+            position: absolute; top: 20px; left: 20px;
+            font-size: 11px; color: #666;
+            pointer-events: none;
+            display: none;
+        }
+        .mode-draw #tooltip { display: block; }
+
+        .vignette {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            background: radial-gradient(circle, transparent 40%, black 140%);
+            pointer-events: none;
+        }
+        .grain {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            opacity: 0.05; pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            animation: grain 1s steps(10) infinite;
+        }
+        @keyframes grain { 0%, 100% {transform:translate(0,0)} 20% {transform:translate(-2px,2px)} 40% {transform:translate(2px,-2px)} 60% {transform:translate(-2px,-2px)} 80% {transform:translate(2px,2px)} }
+    </style>
+</head>
+<body class="mode-shatter">
+
+    <div id="ui-layer">
+        <div class="grain"></div>
+        <div class="vignette"></div>
+        <div id="audio-status">AUDIO ENGINE :: ONLINE</div>
+        <div id="tooltip">[SHIFT] Snap Axis • [CTRL+Z] Undo</div>
+        <div id="settings-trigger">[ ☼ ]</div>
+        
+        <div id="control-panel">
+            <h2>CURSOR MODE</h2>
+            <div class="control-group mode-toggle-group">
+                <button id="btn-mode-drag">MANIPULATE</button>
+                <button id="btn-mode-shatter" class="active">DISRUPT</button>
+                <button id="btn-mode-draw">ARCHITECT</button>
+            </div>
+
+            <div id="architect-controls" class="control-group">
+                <div class="label-row" style="margin-bottom:5px;"><span>TOOL SELECTION</span></div>
+                <div class="mode-toggle-group">
+                    <button id="btn-tool-free" class="active">FREEHAND</button>
+                    <button id="btn-tool-line">STRAIGHT</button>
+                    <button id="btn-tool-erase">ERASER</button>
+                </div>
+            </div>
+
+            <h2>ARCHITECT SETTINGS</h2>
+            <div class="control-group">
+                <div class="label-row"><span>LINE FRICTION</span><span id="val-friction">0.1</span></div>
+                <input type="range" id="inp-friction" min="0" max="1" step="0.05" value="0.1">
+            </div>
+            <div class="control-group">
+                <div class="label-row"><span>LINE THICKNESS</span><span id="val-thickness">4</span></div>
+                <input type="range" id="inp-thickness" min="2" max="40" step="1" value="4">
+            </div>
+
+            <h2>AUDIO CONTROL</h2>
+            <div class="control-group">
+                <button id="btn-audio-toggle">INITIALIZE AUDIO SYSTEM</button>
+            </div>
+            <div class="control-group">
+                <div class="label-row"><span>MASTER VOLUME</span><span id="val-vol">0.5</span></div>
+                <input type="range" id="inp-vol" min="0" max="1" step="0.05" value="0.5">
+            </div>
+
+            <h2>PHYSICS</h2>
+            <div class="control-group">
+                <div class="label-row"><span>GRAVITY SCALE</span><span id="val-gravity">1.0</span></div>
+                <input type="range" id="inp-gravity" min="0" max="2" step="0.1" value="1">
+            </div>
+            <div class="control-group">
+                <div class="label-row"><span>DESTRUCTION FORCE</span><span id="val-force">0.12</span></div>
+                <input type="range" id="inp-force" min="0.01" max="0.5" step="0.01" value="0.12">
+            </div>
+
+            <h2>FLOW</h2>
+            <div class="control-group">
+                <div class="label-row"><span>DROP DELAY (FRAMES)</span><span id="val-speed">35</span></div>
+                <input type="range" id="inp-speed" min="5" max="100" step="1" value="35">
+            </div>
+
+            <h2>SOURCE TEXT</h2>
+            <div class="control-group">
+                <textarea id="inp-text" placeholder="Paste custom text..."></textarea>
+                <button id="btn-update-text">INJECT NEW STREAM</button>
+            </div>
+            
+            <h2>SYSTEM</h2>
+            <div class="control-group" style="display:flex; flex-direction:row; gap:5px;">
+                <button id="btn-save" style="flex:1;">SAVE LAYOUT</button>
+                <button id="btn-load" style="flex:1;">LOAD LAYOUT</button>
+            </div>
+            <button id="btn-sweep" style="color:#eebb99; border-color:#664422;">SWEEP DEBRIS</button>
+            
+            <div class="control-group" style="flex-direction:row; justify-content:space-between; align-items:center;">
+                <span style="font-size:10px; color:#888;">INFINITE LOOP</span>
+                <input type="checkbox" id="inp-loop" checked style="width:auto; margin:0;">
+            </div>
+            <button id="btn-clear" style="color:#ff6666; border-color:#663333;">PURGE SIMULATION</button>
+        </div>
+    </div>
+
+    <script>
+        // --- AUDIO ENGINE ---
+        const AudioEngine = {
+            ctx: null, masterGain: null, initialized: false,
+            init: function() {
+                if (this.initialized) return;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+                const compressor = this.ctx.createDynamicsCompressor();
+                compressor.threshold.setValueAtTime(-24, this.ctx.currentTime);
+                compressor.knee.setValueAtTime(30, this.ctx.currentTime);
+                compressor.ratio.setValueAtTime(12, this.ctx.currentTime);
+                compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
+                compressor.release.setValueAtTime(0.25, this.ctx.currentTime);
+
+                this.masterGain = this.ctx.createGain();
+                this.masterGain.gain.value = 0.5;
+                this.masterGain.connect(compressor);
+                compressor.connect(this.ctx.destination);
+
+                this.initialized = true;
+                this.startDrone();
+                this.updateUI(true);
+                const status = document.getElementById('audio-status');
+                status.style.opacity = 0.6;
+                setTimeout(() => status.style.opacity = 0, 4000);
+            },
+            toggle: function() {
+                if (!this.initialized) { this.init(); return; }
+                if (this.ctx.state === 'running') { this.ctx.suspend(); this.updateUI(false); } 
+                else if (this.ctx.state === 'suspended') { this.ctx.resume(); this.updateUI(true); }
+            },
+            updateUI: function(active) {
+                const btn = document.getElementById('btn-audio-toggle');
+                if (active) { btn.innerText = "AUDIO :: ACTIVE"; btn.classList.add('active'); } 
+                else { btn.innerText = "AUDIO :: SUSPENDED"; btn.classList.remove('active'); }
+            },
+            setVolume: function(val) { if(this.masterGain) this.masterGain.gain.setValueAtTime(val, this.ctx.currentTime); },
+            startDrone: function() {
+                [55, 65, 110, 220].forEach((f, i) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = i === 1 ? 'sine' : 'triangle'; 
+                    osc.frequency.value = f;
+                    const lfo = this.ctx.createOscillator();
+                    lfo.frequency.value = 0.05 + Math.random() * 0.05;
+                    const lfoGain = this.ctx.createGain();
+                    lfoGain.gain.value = 0.01;
+                    lfo.connect(lfoGain); lfoGain.connect(gain.gain);
+                    gain.gain.value = 0.04; 
+                    osc.connect(gain); gain.connect(this.masterGain); 
+                    osc.start(); lfo.start();
+                });
+            },
+            triggerBreak: function(panX) {
+                if (!this.initialized || this.ctx.state === 'suspended') return;
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                const panner = this.ctx.createStereoPanner();
+                osc.frequency.setValueAtTime(400 + Math.random()*1000, t);
+                osc.frequency.exponentialRampToValueAtTime(10, t + 0.15);
+                gain.gain.setValueAtTime(0.3 * SETTINGS.force, t); 
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+                panner.pan.value = panX;
+                osc.connect(gain); gain.connect(panner); panner.connect(this.masterGain);
+                osc.start(); osc.stop(t + 0.2);
+            }
+        };
+
+        // --- GLOBAL SETTINGS ---
+        const SETTINGS = {
+            gravity: 1.0,
+            force: 0.12,
+            spawnInterval: 35,
+            loop: true,
+            interactionMode: 'shatter', 
+            architectTool: 'freehand', 
+            textSource: [],
+            lineFriction: 0.1,
+            lineThickness: 4
+        };
+
+        const DEFAULTS = [
+            "Now the whole earth had one language and the same words.",
+            "And as people migrated from the east, they found a plain in the land of Shinar and settled there.",
+            "And they said to one another, Come, let us make bricks, and burn them thoroughly.",
+            "Then they said, Come, let us build ourselves a city and a tower with its top in the heavens.",
+            "And the Lord came down to see the city and the tower, which the children of man had built.",
+            "And the Lord said, Behold, they are one people, and they have all one language.",
+            "Come, let us go down and there confuse their language.",
+            "So the Lord dispersed them from there over the face of all the earth.",
+            "Therefore its name was called Babel, because there the Lord confused the language of all the earth.",
+            "וַיְהִי כָל-הָאָרֶץ שָׂפָה אֶחָת וּדְבָרִים אֲחָדִים",
+            "וַיְהִי בְּנָסְעָם מִקֶּדֶם וַיִּמְצְאוּ בִקְעָה בְּאֶרֶץ שִׁנְעָר וַיֵּשְׁבוּ שָׁם"
+        ];
+        SETTINGS.textSource = [...DEFAULTS];
+
+        const CONFIG = {
+            fontSize: 22, letterSpacing: 16, disruptRadius: 80, maxBodies: 700,
+            colors: { english: '#cccccc', hebrew: '#eebb99', shard: '#555', dust: '#777' }
+        };
+        const GLYPHS = "ΣΩΨΦДЖЊϞϠℵℶℷ∅∇∂≠≡⋈∴∵⌆⌖⌐⌡⌠";
+
+        // --- MATTER.JS SETUP ---
+        const Engine = Matter.Engine, Runner = Matter.Runner, Bodies = Matter.Bodies, 
+              Composite = Matter.Composite, Constraint = Matter.Constraint, Body = Matter.Body, 
+              Mouse = Matter.Mouse, MouseConstraint = Matter.MouseConstraint, Sleeping = Matter.Sleeping;
+
+        const engine = Engine.create({ enableSleeping: true });
+        const world = engine.world;
+        
+        const architectLayer = Composite.create();
+        Composite.add(world, architectLayer);
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        document.body.appendChild(canvas);
+        
+        engine.positionIterations = 8;
+        engine.velocityIterations = 6;
+
+        let width, height;
+        let wordComposites = [];
+        let particles = [];
+        let glitchIntensity = 0;
+        let wordQueue = [];
+        let walls = []; 
+        let dpr = 1;
+        let undoStack = []; 
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            dpr = window.devicePixelRatio || 1;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+            ctx.scale(dpr, dpr);
+
+            if (walls.length > 0) Composite.remove(world, walls);
+            const floor = Bodies.rectangle(width / 2, height + 100, width * 2, 200, { isStatic: true });
+            const wL = Bodies.rectangle(-50, height/2, 100, height*4, { isStatic: true });
+            const wR = Bodies.rectangle(width + 50, height/2, 100, height*4, { isStatic: true });
+            walls = [floor, wL, wR];
+            Composite.add(world, walls);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const mouse = Mouse.create(canvas);
+        mouse.pixelRatio = dpr;
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse, constraint: { stiffness: 0.1, render: { visible: false } }
+        });
+        Composite.add(world, mouseConstraint);
+
+        // --- DRAWING LOGIC ---
+        let isDrawing = false;
+        let lastDrawPoint = null;
+        let startDrawPoint = null; 
+        let currentDrawPoint = null; 
+        let hoveredEraseBody = null; 
+
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                if (undoStack.length > 0) {
+                    const lastBody = undoStack.pop();
+                    Composite.remove(architectLayer, lastBody);
+                    const nearby = Matter.Query.region(Composite.allBodies(world), lastBody.bounds);
+                    nearby.forEach(b => Sleeping.set(b, false));
+                }
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (SETTINGS.interactionMode === 'draw') {
+                if (SETTINGS.architectTool === 'eraser' && hoveredEraseBody) {
+                    Composite.remove(architectLayer, hoveredEraseBody);
+                    const idx = undoStack.indexOf(hoveredEraseBody);
+                    if (idx > -1) undoStack.splice(idx, 1);
+                    hoveredEraseBody = null;
+                    return;
+                }
+
+                isDrawing = true;
+                const pt = { x: e.offsetX, y: e.offsetY };
+                lastDrawPoint = pt;
+                startDrawPoint = pt;
+                currentDrawPoint = pt;
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (SETTINGS.interactionMode === 'draw' && SETTINGS.architectTool === 'line' && startDrawPoint) {
+                let endPoint = { x: e.offsetX, y: e.offsetY };
+                if (e.shiftKey) {
+                    const dx = Math.abs(endPoint.x - startDrawPoint.x);
+                    const dy = Math.abs(endPoint.y - startDrawPoint.y);
+                    if (dx > dy) endPoint.y = startDrawPoint.y;
+                    else endPoint.x = startDrawPoint.x;
+                }
+                createStraightLine(startDrawPoint, endPoint);
+            }
+            isDrawing = false;
+            lastDrawPoint = null;
+            startDrawPoint = null;
+            currentDrawPoint = null;
+        });
+        
+        canvas.addEventListener('mouseleave', () => { isDrawing = false; lastDrawPoint = null; startDrawPoint = null; });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (SETTINGS.interactionMode === 'draw') {
+                let pt = { x: e.offsetX, y: e.offsetY };
+                
+                if (SETTINGS.architectTool === 'line' && startDrawPoint && e.shiftKey) {
+                    const dx = Math.abs(pt.x - startDrawPoint.x);
+                    const dy = Math.abs(pt.y - startDrawPoint.y);
+                    if (dx > dy) pt.y = startDrawPoint.y;
+                    else pt.x = startDrawPoint.x;
+                }
+                currentDrawPoint = pt;
+
+                if (isDrawing && SETTINGS.architectTool === 'freehand') {
+                    const dist = Math.hypot(pt.x - lastDrawPoint.x, pt.y - lastDrawPoint.y);
+                    if (dist > 10) {
+                        createLineSegment(lastDrawPoint, pt, dist);
+                        lastDrawPoint = pt;
+                    }
+                } 
+                
+                if (SETTINGS.architectTool === 'eraser') {
+                    hoveredEraseBody = null;
+                    const bodies = Composite.allBodies(architectLayer);
+                    const eraseRadius = 20;
+                    
+                    for (let b of bodies) {
+                        if (Math.abs(b.position.x - pt.x) < 100 && Math.abs(b.position.y - pt.y) < 100) {
+                             if (Matter.Vertices.contains(b.vertices, pt) || 
+                                Math.hypot(b.position.x - pt.x, b.position.y - pt.y) < eraseRadius) {
+                                hoveredEraseBody = b;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        function createLineSegment(p1, p2, dist) {
+            const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            const body = Bodies.rectangle(midX, midY, dist, SETTINGS.lineThickness, {
+                isStatic: true,
+                angle: angle,
+                friction: SETTINGS.lineFriction,
+                render: { visible: true },
+                label: 'drawn-line'
+            });
+            Composite.add(architectLayer, body);
+            undoStack.push(body); 
+        }
+
+        function createStraightLine(p1, p2) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < 5) return; 
+            createLineSegment(p1, p2, dist);
+        }
+
+        // --- GAME LOGIC ---
+        function refillQueue() {
+            let allWords = [];
+            SETTINGS.textSource.forEach(s => allWords = allWords.concat(s.split(/\s+/)));
+            wordQueue = allWords;
+        }
+        refillQueue();
+
+        function createWord(text, x, y) {
+            const group = Body.nextGroup(true);
+            const letterBodies = [];
+            const isHeb = /[\u0590-\u05FF]/.test(text);
+            const chars = Array.from(text);
+            
+            for (let i = 0; i < chars.length; i++) {
+                let xPos = isHeb ? x + (chars.length - 1 - i) * CONFIG.letterSpacing : x + (i * CONFIG.letterSpacing);
+                const body = Bodies.rectangle(xPos, y, CONFIG.fontSize * 0.5, CONFIG.fontSize, {
+                    collisionFilter: { group: group },
+                    friction: 0.9, density: 0.02,
+                    plugin: { char: chars[i], isBroken: false, color: isHeb ? CONFIG.colors.hebrew : CONFIG.colors.english }
+                });
+                letterBodies.push(body);
+            }
+            const constraints = [];
+            for (let i = 0; i < letterBodies.length - 1; i++) {
+                constraints.push(Constraint.create({
+                    bodyA: letterBodies[i], bodyB: letterBodies[i+1],
+                    stiffness: 0.8, length: CONFIG.letterSpacing, render: { visible: false }
+                }));
+            }
+            const composite = Composite.create();
+            Composite.add(composite, letterBodies);
+            Composite.add(composite, constraints);
+            composite.plugin = { intact: true };
+            return composite;
+        }
+
+        let spawnTimer = 0;
+        let frameCount = 0;
+        
+        function update() {
+            frameCount++;
+            Engine.update(engine, 1000 / 60);
+            engine.world.gravity.y = SETTINGS.gravity;
+
+            mouseConstraint.constraint.stiffness = (SETTINGS.interactionMode === 'drag') ? 0.1 : 0;
+
+            if (spawnTimer <= 0) {
+                if (wordQueue.length === 0 && SETTINGS.loop) refillQueue();
+                if (wordQueue.length > 0) {
+                    const text = wordQueue.shift();
+                    const x = (width/2) + (Math.random()-0.5) * (width*0.6);
+                    const comp = createWord(text, x, -100);
+                    Composite.rotate(comp, (Math.random()-0.5), {x:x, y:-100});
+                    Composite.add(world, comp);
+                    wordComposites.push(comp);
+                    spawnTimer = SETTINGS.spawnInterval;
+                }
+            }
+            spawnTimer--;
+            checkInteraction();
+            garbageCollect();
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function checkInteraction() {
+            if (SETTINGS.interactionMode !== 'shatter') return;
+
+            wordComposites.forEach(comp => {
+                if (!comp.plugin.intact) return;
+                const bodies = Composite.allBodies(comp);
+                if (!bodies.length) return;
+                
+                let cx = 0, cy = 0;
+                bodies.forEach(b => { cx += b.position.x; cy += b.position.y; });
+                cx /= bodies.length; cy /= bodies.length;
+
+                if (Math.hypot(mouse.position.x - cx, mouse.position.y - cy) < CONFIG.disruptRadius) {
+                    shatter(comp, mouse.position);
+                }
+            });
+        }
+
+        function shatter(comp, source) {
+            comp.plugin.intact = false;
+            Composite.remove(comp, Composite.allConstraints(comp)); 
+            AudioEngine.triggerBreak((source.x / width) * 2 - 1); 
+            
+            Composite.allBodies(comp).forEach(b => {
+                b.plugin.char = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
+                b.plugin.isBroken = true;
+                b.friction = 0.05; 
+                b.restitution = 0.1;
+                Sleeping.set(b, false);
+                let fx = b.position.x - source.x;
+                let fy = b.position.y - source.y;
+                let len = Math.hypot(fx, fy) || 1;
+                const forceMag = SETTINGS.force * b.mass;
+                Body.applyForce(b, b.position, { x: (fx/len)*forceMag, y: (fy/len)*forceMag });
+                Body.setAngularVelocity(b, (Math.random()-0.5)*0.3);
+                
+                for(let i=0; i<3; i++) particles.push({
+                    x: b.position.x, y: b.position.y,
+                    vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10,
+                    life: 1.0, size: Math.random()*2+1
+                });
+            });
+            glitchIntensity = 5;
+        }
+
+        function garbageCollect() {
+            if (frameCount % 60 !== 0) return; 
+
+            const all = Composite.allBodies(world);
+            const toRemove = [];
+            for (let i = 0; i < all.length; i++) {
+                if (all[i].position.y > height + 200) toRemove.push(all[i]);
+            }
+            Composite.remove(world, toRemove);
+            const textBodies = all.filter(b => b.plugin && b.plugin.char);
+            if (textBodies.length > CONFIG.maxBodies) {
+                const excess = textBodies.slice(0, textBodies.length - CONFIG.maxBodies);
+                Composite.remove(world, excess);
+            }
+        }
+
+        // --- RENDERER ---
+        function draw() {
+            ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg');
+            ctx.fillRect(0, 0, width, height);
+            
+            let ox = 0, oy = 0;
+            if(glitchIntensity > 0.1) {
+                ox = (Math.random()-0.5)*glitchIntensity;
+                oy = (Math.random()-0.5)*glitchIntensity;
+                glitchIntensity *= 0.9;
+            }
+            
+            ctx.save();
+            ctx.translate(ox, oy);
+
+            const bodies = Composite.allBodies(world);
+            const architectBodies = Composite.allBodies(architectLayer);
+            
+            // Draw Architect Lines
+            ctx.beginPath();
+            architectBodies.forEach(b => {
+                if (b.label === 'drawn-line') {
+                    if (b === hoveredEraseBody) {
+                        ctx.strokeStyle = '#ff5555';
+                        ctx.lineWidth = b.isSensor ? 1 : 2;
+                        
+                        ctx.moveTo(b.vertices[0].x, b.vertices[0].y);
+                        for(let j=1; j<b.vertices.length; j++) ctx.lineTo(b.vertices[j].x, b.vertices[j].y);
+                        ctx.lineTo(b.vertices[0].x, b.vertices[0].y);
+                        ctx.stroke();
+                        ctx.beginPath(); // reset for fill
+                    }
+
+                    ctx.moveTo(b.vertices[0].x, b.vertices[0].y);
+                    for(let j=1; j<b.vertices.length; j++) {
+                        ctx.lineTo(b.vertices[j].x, b.vertices[j].y);
+                    }
+                    ctx.lineTo(b.vertices[0].x, b.vertices[0].y);
+                }
+            });
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+
+            // Sketchy overlay
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(255,255,255,0.3)";
+            ctx.lineWidth = 1;
+            architectBodies.forEach(b => {
+                if (b.label === 'drawn-line') {
+                   const jitter = 0.5;
+                   ctx.moveTo(b.vertices[0].x + (Math.random()-0.5)*jitter, b.vertices[0].y + (Math.random()-0.5)*jitter);
+                   for(let j=1; j<b.vertices.length; j++) {
+                       ctx.lineTo(b.vertices[j].x + (Math.random()-0.5)*jitter, b.vertices[j].y + (Math.random()-0.5)*jitter);
+                   }
+                }
+            });
+            ctx.stroke();
+
+            // Draw Words
+            bodies.forEach(b => {
+                if (b.plugin && b.plugin.char) {
+                    ctx.save();
+                    ctx.translate(b.position.x, b.position.y);
+                    ctx.rotate(b.angle);
+                    ctx.textAlign="center"; ctx.textBaseline="middle";
+                    ctx.font = `${CONFIG.fontSize}px 'Courier New'`;
+                    
+                    if (b.plugin.isBroken) {
+                        ctx.fillStyle = CONFIG.colors.shard;
+                        if(Math.random()>0.98) ctx.fillStyle='#fff'; 
+                    } else {
+                        ctx.fillStyle = b.isSleeping ? '#888' : b.plugin.color;
+                    }
+                    ctx.fillText(b.plugin.char, 0, 0);
+                    ctx.restore();
+                }
+            });
+            
+            // Draw Particles
+            for(let i=particles.length-1; i>=0; i--) {
+                let p = particles[i];
+                p.life -= 0.03;
+                if(p.life<=0) particles.splice(i,1);
+                else {
+                    ctx.fillStyle = CONFIG.colors.dust;
+                    ctx.globalAlpha = p.life;
+                    ctx.fillRect(p.x, p.y, p.size, p.size);
+                    p.x += p.vx; p.y += p.vy;
+                }
+            }
+            ctx.globalAlpha = 1;
+
+            // Draw Tool Overlays
+            if (SETTINGS.interactionMode === 'draw' && currentDrawPoint) {
+                if (SETTINGS.architectTool === 'line' && isDrawing && startDrawPoint) {
+                    // Preview line
+                    ctx.beginPath();
+                    ctx.moveTo(startDrawPoint.x, startDrawPoint.y);
+                    ctx.lineTo(currentDrawPoint.x, currentDrawPoint.y);
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                } else if (SETTINGS.architectTool === 'eraser') {
+                    // Eraser cursor
+                    ctx.beginPath();
+                    ctx.arc(currentDrawPoint.x, currentDrawPoint.y, 20, 0, Math.PI*2);
+                    ctx.strokeStyle = hoveredEraseBody ? '#ff5555' : '#777';
+                    ctx.lineWidth = hoveredEraseBody ? 2 : 1;
+                    ctx.stroke();
+                }
+            }
+
+            ctx.restore();
+        }
+
+        // --- CONTROLS ---
+        const panel = document.getElementById('control-panel');
+        const trigger = document.getElementById('settings-trigger');
+        trigger.addEventListener('click', () => panel.classList.toggle('active'));
+        document.addEventListener('click', () => { if(!AudioEngine.initialized) AudioEngine.init(); });
+
+        const bindSlider = (id, settingKey, displayId) => {
+            const el = document.getElementById(id);
+            const disp = document.getElementById(displayId);
+            el.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                SETTINGS[settingKey] = val;
+                disp.innerText = val;
+            });
+        };
+        bindSlider('inp-gravity', 'gravity', 'val-gravity');
+        bindSlider('inp-force', 'force', 'val-force');
+        bindSlider('inp-speed', 'spawnInterval', 'val-speed');
+        
+        bindSlider('inp-friction', 'lineFriction', 'val-friction');
+        bindSlider('inp-thickness', 'lineThickness', 'val-thickness');
+
+        document.getElementById('inp-vol').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById('val-vol').innerText = val;
+            AudioEngine.setVolume(val);
+        });
+        document.getElementById('btn-audio-toggle').addEventListener('click', (e) => {
+            e.stopPropagation(); 
+            AudioEngine.toggle();
+        });
+
+        const btnDrag = document.getElementById('btn-mode-drag');
+        const btnShatter = document.getElementById('btn-mode-shatter');
+        const btnDraw = document.getElementById('btn-mode-draw');
+        
+        const setMode = (mode) => {
+            SETTINGS.interactionMode = mode;
+            btnDrag.classList.toggle('active', mode === 'drag');
+            btnShatter.classList.toggle('active', mode === 'shatter');
+            btnDraw.classList.toggle('active', mode === 'draw');
+            
+            document.body.classList.remove('mode-drag', 'mode-shatter', 'mode-draw');
+            document.body.classList.add(`mode-${mode}`);
+        };
+
+        btnDrag.addEventListener('click', () => setMode('drag'));
+        btnShatter.addEventListener('click', () => setMode('shatter'));
+        btnDraw.addEventListener('click', () => setMode('draw'));
+
+        // Architect Sub-Tools
+        const btnToolFree = document.getElementById('btn-tool-free');
+        const btnToolLine = document.getElementById('btn-tool-line');
+        const btnToolErase = document.getElementById('btn-tool-erase');
+
+        const setArchitectTool = (tool) => {
+            SETTINGS.architectTool = tool;
+            btnToolFree.classList.toggle('active', tool === 'freehand');
+            btnToolLine.classList.toggle('active', tool === 'line');
+            btnToolErase.classList.toggle('active', tool === 'eraser');
+            
+            document.body.classList.remove('tool-free', 'tool-line', 'tool-erase');
+            document.body.classList.add(`tool-${tool}`);
+        };
+
+        btnToolFree.addEventListener('click', () => setArchitectTool('freehand'));
+        btnToolLine.addEventListener('click', () => setArchitectTool('line'));
+        btnToolErase.addEventListener('click', () => setArchitectTool('eraser'));
+        document.body.classList.add('tool-free');
+
+        document.getElementById('btn-update-text').addEventListener('click', () => {
+            const raw = document.getElementById('inp-text').value;
+            if (raw.trim().length > 0) {
+                SETTINGS.textSource = [raw];
+                refillQueue();
+            }
+        });
+
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            Composite.clear(world, false, true); 
+            resize(); 
+            wordComposites = [];
+            refillQueue();
+            undoStack = [];
+        });
+        document.getElementById('inp-loop').addEventListener('change', (e) => SETTINGS.loop = e.target.checked);
+
+        // --- NEW FEATURES IMPLEMENTATION ---
+
+        // 1. SWEEP DEBRIS
+        document.getElementById('btn-sweep').addEventListener('click', () => {
+            const all = Composite.allBodies(world);
+            const debris = all.filter(b => b.plugin && b.plugin.isBroken);
+            Composite.remove(world, debris);
+            particles = []; 
+        });
+
+        // 2. SAVE LAYOUT
+        document.getElementById('btn-save').addEventListener('click', () => {
+            const lines = Composite.allBodies(architectLayer).map(b => {
+                // Calculate length based on top vertices distance
+                const len = Math.hypot(b.vertices[1].x - b.vertices[0].x, b.vertices[1].y - b.vertices[0].y);
+                return { x: b.position.x, y: b.position.y, angle: b.angle, length: len };
+            });
+
+            localStorage.setItem('babel_architect_v1', JSON.stringify(lines));
+            
+            const btn = document.getElementById('btn-save');
+            const original = btn.innerText;
+            btn.innerText = "SAVED!";
+            setTimeout(() => btn.innerText = original, 1000);
+        });
+
+        // 3. LOAD LAYOUT
+        document.getElementById('btn-load').addEventListener('click', () => {
+            const raw = localStorage.getItem('babel_architect_v1');
+            if (!raw) return;
+            
+            Composite.clear(architectLayer, false, true);
+            undoStack = [];
+
+            const data = JSON.parse(raw);
+            data.forEach(lineData => {
+                const body = Bodies.rectangle(lineData.x, lineData.y, lineData.length, SETTINGS.lineThickness, {
+                    isStatic: true,
+                    angle: lineData.angle,
+                    friction: SETTINGS.lineFriction,
+                    render: { visible: true },
+                    label: 'drawn-line'
+                });
+                Composite.add(architectLayer, body);
+                undoStack.push(body);
+            });
+        });
+
+        update();
+
+    </script>
+</body>
+</html>
