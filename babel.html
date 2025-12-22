@@ -352,8 +352,24 @@
                         <button id="btn-audio-toggle">INITIALIZE AUDIO</button>
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>VOLUME</span><span id="val-vol">0.5</span></div>
-                        <input type="range" id="inp-vol" min="0" max="1" step="0.05" value="0.5">
+                        <div class="label-row"><span>MASTER VOLUME</span><span id="val-vol">0.35</span></div>
+                        <input type="range" id="inp-vol" min="0" max="1" step="0.05" value="0.35">
+                    </div>
+                    <div class="control-group">
+                        <div class="label-row"><span>EXPLOSION</span><span id="val-vol-explosion">1.0</span></div>
+                        <input type="range" id="inp-vol-explosion" min="0" max="2" step="0.05" value="1">
+                    </div>
+                    <div class="control-group">
+                        <div class="label-row"><span>COLLISION</span><span id="val-vol-collision">1.0</span></div>
+                        <input type="range" id="inp-vol-collision" min="0" max="2" step="0.05" value="1">
+                    </div>
+                    <div class="control-group">
+                        <div class="label-row"><span>BOUNCE</span><span id="val-vol-bounce">1.0</span></div>
+                        <input type="range" id="inp-vol-bounce" min="0" max="2" step="0.05" value="1">
+                    </div>
+                    <div class="control-group">
+                        <div class="label-row"><span>TYPING</span><span id="val-vol-typing">1.0</span></div>
+                        <input type="range" id="inp-vol-typing" min="0" max="2" step="0.05" value="1">
                     </div>
 
                     <h2>SOURCE TEXT</h2>
@@ -410,6 +426,13 @@
                 this.initialized = false;
                 this.droneVoices = [];
                 this.tension = 0;
+                this.volumes = {
+                    master: 0.35,
+                    explosion: 1.4,
+                    collision: 0.1,
+                    bounce: 1,
+                    typing: 1
+                };
             }
             init() {
                 if (this.initialized) return;
@@ -422,11 +445,10 @@
                 compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
                 compressor.release.setValueAtTime(0.25, this.ctx.currentTime);
                 this.masterGain = this.ctx.createGain();
-                this.masterGain.gain.value = 0.5;
+                this.masterGain.gain.value = this.volumes.master;
                 this.masterGain.connect(compressor);
                 compressor.connect(this.ctx.destination);
                 this.initialized = true;
-                this.startDrone();
                 this.updateUI(true);
                 const status = document.getElementById('audio-status');
                 status.style.opacity = 0.6;
@@ -442,61 +464,142 @@
                 if (active) { btn.innerText = "AUDIO :: ACTIVE"; btn.classList.add('active'); } 
                 else { btn.innerText = "AUDIO :: SUSPENDED"; btn.classList.remove('active'); }
             }
-            setVolume(val) { if(this.masterGain) this.masterGain.gain.setValueAtTime(val, this.ctx.currentTime); }
-            startDrone() {
-                [55, 65, 110, 220].forEach((f, i) => {
-                    const osc = this.ctx.createOscillator();
-                    const gain = this.ctx.createGain();
-                    osc.type = i === 1 ? 'sine' : 'triangle'; 
-                    osc.frequency.value = f;
-                    const lfo = this.ctx.createOscillator();
-                    lfo.frequency.value = 0.05 + Math.random() * 0.05;
-                    const lfoGain = this.ctx.createGain();
-                    lfoGain.gain.value = 0.01;
-                    lfo.connect(lfoGain); lfoGain.connect(gain.gain);
-                    gain.gain.value = 0.04; 
-                    osc.connect(gain); gain.connect(this.masterGain); 
-                    osc.start(); lfo.start();
-                    this.droneVoices.push({ osc, gain, baseFreq: f });
-                });
+            setVolume(val) { 
+                this.volumes.master = val;
+                if(this.masterGain) this.masterGain.gain.setValueAtTime(val, this.ctx.currentTime); 
             }
-            setTension(level) {
-                if (!this.initialized || this.ctx.state === 'suspended') return;
-                this.tension = Math.max(0, Math.min(1, level));
-                const spread = 1 + this.tension * 1.5;
-                const now = this.ctx.currentTime;
-                this.droneVoices.forEach((voice, idx) => {
-                    const offset = (idx - 1.5) * 0.02;
-                    voice.osc.frequency.setTargetAtTime(voice.baseFreq * spread * (1 + offset), now, 0.2);
-                    voice.gain.gain.setTargetAtTime(0.02 + this.tension * 0.04, now, 0.2);
-                });
+            setCategoryVolume(type, val) {
+                if (this.volumes[type] !== undefined) this.volumes[type] = val;
             }
-            triggerBreak(panX) {
+            playTone({ type = 'sine', startFreq = 220, endFreq = 180, duration = 0.15, gain = 0.05, pan = 0 } = {}) {
                 if (!this.initialized || this.ctx.state === 'suspended') return;
                 const t = this.ctx.currentTime;
                 const osc = this.ctx.createOscillator();
-                const gain = this.ctx.createGain();
-                const panner = this.ctx.createStereoPanner();
-                osc.frequency.setValueAtTime(400 + Math.random()*1000, t);
-                osc.frequency.exponentialRampToValueAtTime(10, t + 0.15);
-                gain.gain.setValueAtTime(0.3 * SETTINGS.force, t); 
-                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
-                panner.pan.value = panX;
-                osc.connect(gain); gain.connect(panner); panner.connect(this.masterGain);
-                osc.start(); osc.stop(t + 0.2);
+                const g = this.ctx.createGain();
+                const p = this.ctx.createStereoPanner();
+                osc.type = type;
+                osc.frequency.setValueAtTime(startFreq, t);
+                osc.frequency.exponentialRampToValueAtTime(endFreq, t + duration);
+                g.gain.setValueAtTime(gain, t);
+                g.gain.exponentialRampToValueAtTime(0.0005, t + duration);
+                p.pan.value = pan;
+                osc.connect(g); g.connect(p); p.connect(this.masterGain);
+                osc.start(t); osc.stop(t + duration + 0.02);
+            }
+            explosion(panX = 0) {
+                if (!this.initialized || this.ctx.state === 'suspended') return;
+                const t = this.ctx.currentTime;
+                const noise = this.ctx.createBufferSource();
+                const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.3, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+                noise.buffer = buffer;
+                const bp = this.ctx.createBiquadFilter();
+                bp.type = 'bandpass';
+                bp.frequency.setValueAtTime(220, t);
+                bp.Q.value = 0.8;
+                const lp = this.ctx.createBiquadFilter();
+                lp.type = 'lowpass';
+                lp.frequency.setValueAtTime(1200, t);
+                const g = this.ctx.createGain();
+                g.gain.setValueAtTime(0.3 * Math.max(0.4, SETTINGS.force) * this.volumes.explosion, t);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+                const sub = this.ctx.createOscillator();
+                const subGain = this.ctx.createGain();
+                sub.type = 'sine';
+                sub.frequency.setValueAtTime(110, t);
+                sub.frequency.exponentialRampToValueAtTime(48, t + 0.45);
+                subGain.gain.setValueAtTime(0.18 * Math.max(0.4, SETTINGS.force) * this.volumes.explosion, t);
+                subGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+                const p = this.ctx.createStereoPanner();
+                p.pan.value = panX;
+                noise.connect(bp); bp.connect(lp); lp.connect(g); g.connect(p);
+                sub.connect(subGain); subGain.connect(p);
+                p.connect(this.masterGain);
+                noise.start(t); noise.stop(t + 0.4);
+                sub.start(t); sub.stop(t + 0.5);
+            }
+            bounce(panX = 0) {
+                if (!this.initialized || this.ctx.state === 'suspended') return;
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const bp = this.ctx.createBiquadFilter();
+                const g = this.ctx.createGain();
+                const p = this.ctx.createStereoPanner();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(360, t);
+                osc.frequency.linearRampToValueAtTime(760, t + 0.16);
+                bp.type = 'bandpass';
+                bp.frequency.setValueAtTime(520, t);
+                bp.Q.value = 5;
+                g.gain.setValueAtTime(0.045 * this.volumes.bounce, t);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+                p.pan.value = panX;
+                osc.connect(bp); bp.connect(g); g.connect(p); p.connect(this.masterGain);
+                osc.start(t); osc.stop(t + 0.22);
+            }
+            collision(panX = 0) {
+                if (!this.initialized || this.ctx.state === 'suspended') return;
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const g = this.ctx.createGain();
+                const lp = this.ctx.createBiquadFilter();
+                const noise = this.ctx.createBufferSource();
+                const buffer = this.ctx.createBuffer(1, this.ctx.sampleRate * 0.12, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+                noise.buffer = buffer;
+                const noiseFilter = this.ctx.createBiquadFilter();
+                noiseFilter.type = 'bandpass';
+                noiseFilter.frequency.setValueAtTime(160, t);
+                noiseFilter.Q.value = 1.6;
+                const noiseGain = this.ctx.createGain();
+                noiseGain.gain.setValueAtTime(0.03 * this.volumes.collision, t);
+                noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(210, t);
+                osc.frequency.exponentialRampToValueAtTime(90, t + 0.16);
+                lp.type = 'lowpass';
+                lp.frequency.setValueAtTime(280, t);
+                lp.Q.value = 1.2;
+                g.gain.setValueAtTime(0.05 * this.volumes.collision, t);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+                const p = this.ctx.createStereoPanner();
+                p.pan.value = panX;
+                osc.connect(lp); lp.connect(g); g.connect(p);
+                noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(p);
+                p.connect(this.masterGain);
+                osc.start(t); osc.stop(t + 0.22);
+                noise.start(t); noise.stop(t + 0.16);
+            }
+            setTension(level) {
+                if (!this.initialized || this.ctx.state === 'suspended' || this.droneVoices.length === 0) return;
+                this.tension = Math.max(0, Math.min(1, level));
+                const spread = 1 + this.tension * 0.4;
+                const now = this.ctx.currentTime;
+                this.droneVoices.forEach((voice, idx) => {
+                    const offset = (idx - 1.5) * 0.01;
+                    voice.osc.frequency.setTargetAtTime(voice.baseFreq * spread * (1 + offset), now, 0.35);
+                    voice.gain.gain.setTargetAtTime(0.02 + this.tension * 0.02, now, 0.35);
+                });
             }
             click() {
                 if (!this.initialized || this.ctx.state === 'suspended') return;
                 const t = this.ctx.currentTime;
                 const osc = this.ctx.createOscillator();
                 const gain = this.ctx.createGain();
+                const hp = this.ctx.createBiquadFilter();
+                const p = this.ctx.createStereoPanner();
                 osc.type = 'square';
-                osc.frequency.setValueAtTime(900, t);
-                osc.frequency.exponentialRampToValueAtTime(1200, t + 0.02);
-                gain.gain.setValueAtTime(0.08, t);
-                gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
-                osc.connect(gain); gain.connect(this.masterGain);
-                osc.start(t); osc.stop(t + 0.06);
+                osc.frequency.setValueAtTime(1250, t);
+                osc.frequency.exponentialRampToValueAtTime(900, t + 0.05);
+                hp.type = 'highpass';
+                hp.frequency.setValueAtTime(900, t);
+                gain.gain.setValueAtTime(0.02 * this.volumes.typing, t);
+                gain.gain.exponentialRampToValueAtTime(0.0004, t + 0.1);
+                p.pan.value = (Math.random() * 0.6) - 0.3;
+                osc.connect(hp); hp.connect(gain); gain.connect(p); p.connect(this.masterGain);
+                osc.start(t); osc.stop(t + 0.1);
             }
         }
         const audioEngine = new AudioEngine();
@@ -581,6 +684,7 @@
                     const body = Bodies.rectangle(xPos, y, width, height, {
                         collisionFilter: { group },
                         friction: 0.9, 
+                        restitution: 0.2,
                         density: 0.02 * massScale * massBoost,
                         plugin: { 
                             char: ch, isBroken: false, 
@@ -849,9 +953,9 @@
                 return { color: CONFIG.colors.kill, isSensor: true, restitution: 0, label: 'kill-line' };
             }
             if (SETTINGS.lineType === 'bounce') {
-                return { color: CONFIG.colors.bounce, isSensor: false, restitution: 1.5, label: 'bounce-line' };
+                return { color: CONFIG.colors.bounce, isSensor: false, restitution: 1.5, label: 'bounce-line', friction: 0.05 };
             }
-            return { color: currentLineColor || CONFIG.colors.line, isSensor: false, restitution: 0, label: 'drawn-line' };
+            return { color: currentLineColor || CONFIG.colors.line, isSensor: false, restitution: 0, label: 'drawn-line', friction: SETTINGS.lineFriction };
         }
 
         function createFan(pt) {
@@ -881,7 +985,7 @@
             const body = Bodies.rectangle(midX, midY, dist, SETTINGS.lineThickness, {
                 isStatic: true,
                 angle: angle,
-                friction: SETTINGS.lineFriction,
+                friction: props.friction ?? SETTINGS.lineFriction,
                 restitution: props.restitution || 0,
                 isSensor: props.isSensor || false,
                 render: { visible: true, fillStyle: props.color },
@@ -921,10 +1025,36 @@
 
         Events.on(engine, 'collisionStart', (event) => {
             event.pairs.forEach(pair => {
-                const killBody = [pair.bodyA, pair.bodyB].find(b => b.label === 'kill-line');
-                const letterBody = [pair.bodyA, pair.bodyB].find(b => b.plugin && b.plugin.wordComposite);
+                const a = pair.bodyA;
+                const b = pair.bodyB;
+                const killBody = [a, b].find(body => body.label === 'kill-line');
+                const bounceBody = [a, b].find(body => body.label === 'bounce-line');
+                const letterBody = [a, b].find(body => body.plugin && body.plugin.wordComposite);
+
                 if (killBody && letterBody && letterBody.plugin.wordComposite?.plugin?.intact) {
                     shatter(letterBody.plugin.wordComposite, letterBody.position);
+                }
+
+                if (bounceBody && letterBody) {
+                    const vy = letterBody.velocity.y;
+                    const boost = Math.max(6, Math.abs(vy) * 1.1);
+                    Body.setVelocity(letterBody, { x: letterBody.velocity.x, y: -boost });
+                    letterBody.restitution = 1.2;
+                    letterBody.friction = 0.2;
+                    Sleeping.set(letterBody, false);
+                    const pan = (letterBody.position.x / width) * 2 - 1;
+                    audioEngine.bounce(pan);
+                }
+
+                const letters = [a, b].filter(body => body.plugin && body.plugin.char);
+                if (letters.length === 2 && !killBody && !bounceBody) {
+                    const relVx = letters[0].velocity.x - letters[1].velocity.x;
+                    const relVy = letters[0].velocity.y - letters[1].velocity.y;
+                    const speed = Math.hypot(relVx, relVy);
+                    if (speed > 6) {
+                        const pan = ((letters[0].position.x + letters[1].position.x) / 2 / width) * 2 - 1;
+                        audioEngine.collision(pan);
+                    }
                 }
             });
         });
@@ -973,7 +1103,7 @@
             if (!comp.plugin.intact) return;
             comp.plugin.intact = false;
             Composite.remove(comp, Composite.allConstraints(comp)); 
-            audioEngine.triggerBreak((source.x / width) * 2 - 1); 
+            audioEngine.explosion((source.x / width) * 2 - 1); 
             
             Composite.allBodies(comp).forEach(b => {
                 b.plugin.char = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
@@ -1238,11 +1368,54 @@
             fanFields.forEach(f => f.strength = val);
         });
 
-        document.getElementById('inp-vol').addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            document.getElementById('val-vol').innerText = val;
+        const volMasterSlider = document.getElementById('inp-vol');
+        const volMasterVal = document.getElementById('val-vol');
+        const volExplosionSlider = document.getElementById('inp-vol-explosion');
+        const volExplosionVal = document.getElementById('val-vol-explosion');
+        const volCollisionSlider = document.getElementById('inp-vol-collision');
+        const volCollisionVal = document.getElementById('val-vol-collision');
+        const volBounceSlider = document.getElementById('inp-vol-bounce');
+        const volBounceVal = document.getElementById('val-vol-bounce');
+        const volTypingSlider = document.getElementById('inp-vol-typing');
+        const volTypingVal = document.getElementById('val-vol-typing');
+
+        const syncMasterVolume = () => {
+            const val = parseFloat(volMasterSlider.value);
+            volMasterVal.innerText = val.toFixed(2);
             audioEngine.setVolume(val);
-        });
+        };
+        const syncExplosionVolume = () => {
+            const val = parseFloat(volExplosionSlider.value);
+            volExplosionVal.innerText = val.toFixed(2);
+            audioEngine.setCategoryVolume('explosion', val);
+        };
+        const syncCollisionVolume = () => {
+            const val = parseFloat(volCollisionSlider.value);
+            volCollisionVal.innerText = val.toFixed(2);
+            audioEngine.setCategoryVolume('collision', val);
+        };
+        const syncBounceVolume = () => {
+            const val = parseFloat(volBounceSlider.value);
+            volBounceVal.innerText = val.toFixed(2);
+            audioEngine.setCategoryVolume('bounce', val);
+        };
+        const syncTypingVolume = () => {
+            const val = parseFloat(volTypingSlider.value);
+            volTypingVal.innerText = val.toFixed(2);
+            audioEngine.setCategoryVolume('typing', val);
+        };
+
+        volMasterSlider.addEventListener('input', syncMasterVolume);
+        volExplosionSlider.addEventListener('input', syncExplosionVolume);
+        volCollisionSlider.addEventListener('input', syncCollisionVolume);
+        volBounceSlider.addEventListener('input', syncBounceVolume);
+        volTypingSlider.addEventListener('input', syncTypingVolume);
+        // Initialize displayed values to match defaults
+        syncMasterVolume();
+        syncExplosionVolume();
+        syncCollisionVolume();
+        syncBounceVolume();
+        syncTypingVolume();
         document.getElementById('btn-audio-toggle').addEventListener('click', (e) => {
             e.stopPropagation(); 
             audioEngine.toggle();
@@ -1477,7 +1650,7 @@
             refillQueue();
         });
         inpFontSize.addEventListener('input', (e) => {
-             document.getElementById('val-fontsize').innerText = e.target.value;
+             document.getElementById('val-fontcurrentsize').innerText = e.target.value;
         });
 
         const colorBtns = document.querySelectorAll('#line-color-picker button');
