@@ -32,6 +32,7 @@
         body.mode-draw.tool-free canvas { cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>') 0 24, auto; }
         body.mode-draw.tool-line canvas { cursor: crosshair; }
         body.mode-draw.tool-erase canvas { cursor: cell; }
+        body.mode-draw.tool-fan canvas { cursor: crosshair; }
 
         /* --- UI LAYER --- */
         #ui-layer {
@@ -211,6 +212,7 @@
                     <div class="mode-toggle-group">
                         <button id="btn-tool-free" class="active">FREE</button>
                         <button id="btn-tool-line">LINE</button>
+                        <button id="btn-tool-fan">FAN</button>
                         <button id="btn-tool-erase">ERASE</button>
                     </div>
                 </div>
@@ -281,6 +283,14 @@
                         <button id="btn-load" style="flex:1;">LOAD LAYOUT</button>
                     </div>
 
+                    <h2>LINE TYPE</h2>
+                    <div class="control-group mode-toggle-group">
+                        <button id="btn-line-standard" class="active">STANDARD</button>
+                        <button id="btn-line-kill" style="color:#ff7777;">KILL ZONE</button>
+                        <button id="btn-line-bounce" style="color:#77aaff;">BOUNCE PAD</button>
+                    </div>
+                    <div style="font-size:9px; color:#666;">Kill zones vaporize text; bounce pads add 1.5x restitution.</div>
+
                     <h2>LINE PROPERTIES</h2>
                     <div class="control-group">
                         <div class="label-row"><span>FRICTION</span><span id="val-friction">0.1</span></div>
@@ -289,6 +299,21 @@
                     <div class="control-group">
                         <div class="label-row"><span>THICKNESS</span><span id="val-thickness">4</span></div>
                         <input type="range" id="inp-thickness" min="2" max="40" step="1" value="4">
+                    </div>
+
+                    <h2>WIND</h2>
+                    <div class="control-group">
+                        <div class="label-row"><span>FAN DIRECTION</span></div>
+                        <div class="mode-toggle-group">
+                            <button id="btn-fan-left">←</button>
+                            <button id="btn-fan-up" class="active">↑</button>
+                            <button id="btn-fan-right">→</button>
+                            <button id="btn-fan-down">↓</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <div class="label-row"><span>FAN STRENGTH</span><span id="val-fan-strength">0.0006</span></div>
+                        <input type="range" id="inp-fan-strength" min="0" max="0.002" step="0.0001" value="0.0006">
                     </div>
                 </div>
 
@@ -357,10 +382,36 @@
             });
         });
 
-        // --- AUDIO ENGINE ---
-        const AudioEngine = {
-            ctx: null, masterGain: null, initialized: false,
-            init: function() {
+        class Particle {
+            constructor(x, y) {
+                this.x = x; this.y = y;
+                this.vx = (Math.random()-0.5)*10;
+                this.vy = (Math.random()-0.5)*10;
+                this.life = 1.0;
+                this.size = Math.random()*2+1;
+            }
+            update() {
+                this.life -= 0.03;
+                this.x += this.vx; this.y += this.vy;
+                return this.life > 0;
+            }
+            draw(ctx, color) {
+                ctx.fillStyle = color;
+                ctx.globalAlpha = this.life;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        class AudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.masterGain = null;
+                this.initialized = false;
+                this.droneVoices = [];
+                this.tension = 0;
+            }
+            init() {
                 if (this.initialized) return;
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 this.ctx = new AudioContext();
@@ -380,19 +431,19 @@
                 const status = document.getElementById('audio-status');
                 status.style.opacity = 0.6;
                 setTimeout(() => status.style.opacity = 0, 4000);
-            },
-            toggle: function() {
+            }
+            toggle() {
                 if (!this.initialized) { this.init(); return; }
                 if (this.ctx.state === 'running') { this.ctx.suspend(); this.updateUI(false); } 
                 else if (this.ctx.state === 'suspended') { this.ctx.resume(); this.updateUI(true); }
-            },
-            updateUI: function(active) {
+            }
+            updateUI(active) {
                 const btn = document.getElementById('btn-audio-toggle');
                 if (active) { btn.innerText = "AUDIO :: ACTIVE"; btn.classList.add('active'); } 
                 else { btn.innerText = "AUDIO :: SUSPENDED"; btn.classList.remove('active'); }
-            },
-            setVolume: function(val) { if(this.masterGain) this.masterGain.gain.setValueAtTime(val, this.ctx.currentTime); },
-            startDrone: function() {
+            }
+            setVolume(val) { if(this.masterGain) this.masterGain.gain.setValueAtTime(val, this.ctx.currentTime); }
+            startDrone() {
                 [55, 65, 110, 220].forEach((f, i) => {
                     const osc = this.ctx.createOscillator();
                     const gain = this.ctx.createGain();
@@ -406,9 +457,21 @@
                     gain.gain.value = 0.04; 
                     osc.connect(gain); gain.connect(this.masterGain); 
                     osc.start(); lfo.start();
+                    this.droneVoices.push({ osc, gain, baseFreq: f });
                 });
-            },
-            triggerBreak: function(panX) {
+            }
+            setTension(level) {
+                if (!this.initialized || this.ctx.state === 'suspended') return;
+                this.tension = Math.max(0, Math.min(1, level));
+                const spread = 1 + this.tension * 1.5;
+                const now = this.ctx.currentTime;
+                this.droneVoices.forEach((voice, idx) => {
+                    const offset = (idx - 1.5) * 0.02;
+                    voice.osc.frequency.setTargetAtTime(voice.baseFreq * spread * (1 + offset), now, 0.2);
+                    voice.gain.gain.setTargetAtTime(0.02 + this.tension * 0.04, now, 0.2);
+                });
+            }
+            triggerBreak(panX) {
                 if (!this.initialized || this.ctx.state === 'suspended') return;
                 const t = this.ctx.currentTime;
                 const osc = this.ctx.createOscillator();
@@ -422,7 +485,21 @@
                 osc.connect(gain); gain.connect(panner); panner.connect(this.masterGain);
                 osc.start(); osc.stop(t + 0.2);
             }
-        };
+            click() {
+                if (!this.initialized || this.ctx.state === 'suspended') return;
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(900, t);
+                osc.frequency.exponentialRampToValueAtTime(1200, t + 0.02);
+                gain.gain.setValueAtTime(0.08, t);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+                osc.connect(gain); gain.connect(this.masterGain);
+                osc.start(t); osc.stop(t + 0.06);
+            }
+        }
+        const audioEngine = new AudioEngine();
 
         // --- GLOBAL SETTINGS ---
         const SETTINGS = {
@@ -437,10 +514,15 @@
             typingType: 'char', // 'char' or 'enter'
             textSource: [],
             lineFriction: 0.1,
-            lineThickness: 4
+            lineThickness: 4,
+            lineType: 'standard',
+            fanStrength: 0.0006,
+            fanRadius: 180,
+            fanDirection: { x: 0, y: -1 }
         };
 
         let typingBuffer = "";
+        let enterHoldStart = null;
 
         const DEFAULTS = [
             "Now the whole earth had one language and the same words.",
@@ -459,14 +541,71 @@
 
         let CONFIG = {
             fontSize: 22, letterSpacing: 16, disruptRadius: 80, maxBodies: 700,
-            colors: { english: '#cccccc', hebrew: '#eebb99', shard: '#555', dust: '#777' }
+            colors: { 
+                english: '#cccccc', hebrew: '#eebb99', shard: '#555', dust: '#777',
+                kill: '#ff5555', bounce: '#5b8dff', line: '#ffffff'
+            },
+            capitalMassBoost: 1.5,
+            capitalSizeBoost: 1.15
         };
         const GLYPHS = "ΣΩΨΦДЖЊϞϠℵℶℷ∅∇∂≠≡⋈∴∵⌆⌖⌐⌡⌠";
 
         // --- MATTER.JS SETUP ---
         const Engine = Matter.Engine, Runner = Matter.Runner, Bodies = Matter.Bodies, 
               Composite = Matter.Composite, Constraint = Matter.Constraint, Body = Matter.Body, 
-              Mouse = Matter.Mouse, MouseConstraint = Matter.MouseConstraint, Sleeping = Matter.Sleeping;
+              Mouse = Matter.Mouse, MouseConstraint = Matter.MouseConstraint, Sleeping = Matter.Sleeping,
+              Events = Matter.Events;
+
+        class WordFactory {
+            constructor(config) {
+                this.config = config;
+            }
+            isUpperCase(ch) {
+                return ch === ch.toUpperCase() && ch !== ch.toLowerCase();
+            }
+            create(text, x, y, options = {}) {
+                const group = Body.nextGroup(true);
+                const letterBodies = [];
+                const isHeb = /[\u0590-\u05FF]/.test(text);
+                const chars = Array.from(text);
+                const massScale = options.massScale || 1;
+                const sizeScale = options.sizeScale || 1;
+                
+                for (let i = 0; i < chars.length; i++) {
+                    const ch = chars[i];
+                    const sizeBoost = this.isUpperCase(ch) ? this.config.capitalSizeBoost : 1;
+                    const massBoost = this.isUpperCase(ch) ? this.config.capitalMassBoost : 1;
+                    const height = this.config.fontSize * sizeScale * sizeBoost;
+                    const width = height * 0.5;
+                    const xPos = isHeb ? x + (chars.length - 1 - i) * this.config.letterSpacing : x + (i * this.config.letterSpacing);
+                    const body = Bodies.rectangle(xPos, y, width, height, {
+                        collisionFilter: { group },
+                        friction: 0.9, 
+                        density: 0.02 * massScale * massBoost,
+                        plugin: { 
+                            char: ch, isBroken: false, 
+                            color: isHeb ? this.config.colors.hebrew : this.config.colors.english,
+                            size: height
+                        }
+                    });
+                    letterBodies.push(body);
+                }
+
+                const constraints = [];
+                for (let i = 0; i < letterBodies.length - 1; i++) {
+                    constraints.push(Constraint.create({
+                        bodyA: letterBodies[i], bodyB: letterBodies[i+1],
+                        stiffness: 0.8, length: this.config.letterSpacing, render: { visible: false }
+                    }));
+                }
+                const composite = Composite.create({ label: 'word' });
+                Composite.add(composite, letterBodies);
+                Composite.add(composite, constraints);
+                composite.plugin = { intact: true, text };
+                letterBodies.forEach(b => { b.plugin.wordComposite = composite; });
+                return composite;
+            }
+        }
 
         const engine = Engine.create({ enableSleeping: true });
         const world = engine.world;
@@ -484,12 +623,14 @@
         let width, height;
         let wordComposites = [];
         let particles = [];
+        let fanFields = [];
         let glitchIntensity = 0;
         let wordQueue = [];
         let walls = []; 
         let dpr = 1;
         let undoStack = []; 
-        let currentLineColor = '#ffffff';
+        let currentLineColor = CONFIG.colors.line;
+        const wordFactory = new WordFactory(CONFIG);
 
         function resize() {
             width = window.innerWidth;
@@ -519,18 +660,119 @@
         Composite.add(world, mouseConstraint);
 
         // --- DRAWING & KEYBOARD LOGIC ---
-        let isDrawing = false;
-        let lastDrawPoint = null;
-        let startDrawPoint = null; 
-        let currentDrawPoint = null; 
-        let hoveredEraseBody = null; 
+        mouseConstraint.constraint.stiffness = 0;
+
+        class InteractionState {
+            enter() {}
+            exit() {}
+            onMouseDown() {}
+            onMouseUp() {}
+            onMouseMove() {}
+            onMouseLeave() {}
+            onKeyDown() {}
+            onKeyUp() {}
+        }
+
+        class ShatterState extends InteractionState {
+            onMouseDown(e) {
+                if (SETTINGS.triggerMode === 'click') {
+                    checkShatterAt({ x: e.offsetX, y: e.offsetY });
+                }
+            }
+            onMouseMove(e) {
+                if (SETTINGS.triggerMode === 'hover') {
+                    checkShatterAt({ x: e.offsetX, y: e.offsetY });
+                }
+            }
+        }
+
+        class DragState extends InteractionState {
+            enter() { mouseConstraint.constraint.stiffness = 0.1; }
+            exit() { mouseConstraint.constraint.stiffness = 0; }
+        }
+
+        class DrawState extends InteractionState {
+            constructor() {
+                super();
+                this.reset();
+            }
+            reset() {
+                this.isDrawing = false;
+                this.lastPoint = null;
+                this.startPoint = null;
+                this.currentPoint = null;
+                this.hoveredEraseBody = null;
+            }
+            onMouseDown(e) {
+                const pt = { x: e.offsetX, y: e.offsetY };
+                if (SETTINGS.architectTool === 'eraser' && this.hoveredEraseBody) {
+                    removeArchitectBody(this.hoveredEraseBody);
+                    this.hoveredEraseBody = null;
+                    return;
+                }
+                if (SETTINGS.architectTool === 'fan') {
+                    createFan(pt);
+                    return;
+                }
+                this.isDrawing = true;
+                this.lastPoint = pt;
+                this.startPoint = pt;
+                this.currentPoint = pt;
+            }
+            onMouseMove(e) {
+                let pt = { x: e.offsetX, y: e.offsetY };
+                if (SETTINGS.architectTool === 'line' && this.startPoint && e.shiftKey) {
+                    const dx = Math.abs(pt.x - this.startPoint.x);
+                    const dy = Math.abs(pt.y - this.startPoint.y);
+                    if (dx > dy) pt.y = this.startPoint.y;
+                    else pt.x = this.startPoint.x;
+                }
+                this.currentPoint = pt;
+
+                if (this.isDrawing && SETTINGS.architectTool === 'freehand') {
+                    const dist = Math.hypot(pt.x - this.lastPoint.x, pt.y - this.lastPoint.y);
+                    if (dist > 10) {
+                        createLineSegment(this.lastPoint, pt, dist);
+                        this.lastPoint = pt;
+                    }
+                }
+
+                if (SETTINGS.architectTool === 'eraser') {
+                    this.hoveredEraseBody = findEraseTarget(pt);
+                } else {
+                    this.hoveredEraseBody = null;
+                }
+            }
+            onMouseUp(e) {
+                if (SETTINGS.architectTool === 'line' && this.startPoint) {
+                    let endPoint = { x: e.offsetX, y: e.offsetY };
+                    if (e.shiftKey) {
+                        const dx = Math.abs(endPoint.x - this.startPoint.x);
+                        const dy = Math.abs(endPoint.y - this.startPoint.y);
+                        if (dx > dy) endPoint.y = this.startPoint.y;
+                        else endPoint.x = this.startPoint.x;
+                    }
+                    createStraightLine(this.startPoint, endPoint);
+                }
+                this.reset();
+            }
+            onMouseLeave() { this.reset(); }
+        }
+
+        const shatterState = new ShatterState();
+        const dragState = new DragState();
+        const drawState = new DrawState();
+        let activeState = shatterState;
 
         document.addEventListener('keydown', (e) => {
+            if (!audioEngine.initialized) audioEngine.init();
+            audioEngine.click();
+
             // Undo Logic
             if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
                 if (undoStack.length > 0) {
                     const lastBody = undoStack.pop();
-                    Composite.remove(architectLayer, lastBody);
+                    removeArchitectBody(lastBody);
                     const nearby = Matter.Query.region(Composite.allBodies(world), lastBody.bounds);
                     nearby.forEach(b => Sleeping.set(b, false));
                 }
@@ -542,18 +784,10 @@
                 const bufferDisplay = document.getElementById('typing-buffer-display');
 
                 if (SETTINGS.typingType === 'char') {
-                    // One key = One char
-                    if (e.key.length === 1) {
-                        triggerSpawn(e.key);
-                    }
+                    if (e.key.length === 1) triggerSpawn(e.key);
                 } else {
-                    // Enter Mode
                     if (e.key === 'Enter') {
-                        if (typingBuffer.length > 0) {
-                            triggerSpawn(typingBuffer);
-                            typingBuffer = "";
-                            bufferDisplay.innerText = "";
-                        }
+                        enterHoldStart = performance.now();
                     } else if (e.key === 'Backspace') {
                         typingBuffer = typingBuffer.slice(0, -1);
                         bufferDisplay.innerText = typingBuffer + "_";
@@ -563,104 +797,96 @@
                     }
                 }
             }
+
+            activeState?.onKeyDown?.(e);
         });
 
-        canvas.addEventListener('mousedown', (e) => {
-            const clickPoint = { x: e.offsetX, y: e.offsetY };
-
-            // Trigger click-based explosion
-            if (SETTINGS.interactionMode === 'shatter' && SETTINGS.triggerMode === 'click') {
-                checkShatterAt(clickPoint);
-            }
-
-            if (SETTINGS.interactionMode === 'draw') {
-                if (SETTINGS.architectTool === 'eraser' && hoveredEraseBody) {
-                    Composite.remove(architectLayer, hoveredEraseBody);
-                    const idx = undoStack.indexOf(hoveredEraseBody);
-                    if (idx > -1) undoStack.splice(idx, 1);
-                    hoveredEraseBody = null;
-                    return;
+        document.addEventListener('keyup', (e) => {
+            if (SETTINGS.spawnMode === 'typing' && SETTINGS.typingType === 'enter' && e.key === 'Enter') {
+                const bufferDisplay = document.getElementById('typing-buffer-display');
+                if (typingBuffer.length > 0) {
+                    const held = enterHoldStart ? performance.now() - enterHoldStart : 0;
+                    const clamped = Math.min(2000, Math.max(0, held));
+                    const massScale = 1 + (clamped / 2000) * 2; 
+                    const sizeScale = 1 + (clamped / 2000) * 0.2;
+                    triggerSpawn(typingBuffer, { massScale, sizeScale });
+                    typingBuffer = "";
+                    bufferDisplay.innerText = "";
                 }
-
-                isDrawing = true;
-                lastDrawPoint = clickPoint;
-                startDrawPoint = clickPoint;
-                currentDrawPoint = clickPoint;
+                enterHoldStart = null;
             }
+            activeState?.onKeyUp?.(e);
         });
 
-        canvas.addEventListener('mouseup', (e) => {
-            if (SETTINGS.interactionMode === 'draw' && SETTINGS.architectTool === 'line' && startDrawPoint) {
-                let endPoint = { x: e.offsetX, y: e.offsetY };
-                if (e.shiftKey) {
-                    const dx = Math.abs(endPoint.x - startDrawPoint.x);
-                    const dy = Math.abs(endPoint.y - startDrawPoint.y);
-                    if (dx > dy) endPoint.y = startDrawPoint.y;
-                    else endPoint.x = startDrawPoint.x;
-                }
-                createStraightLine(startDrawPoint, endPoint);
+        canvas.addEventListener('mousedown', (e) => activeState?.onMouseDown?.(e));
+        canvas.addEventListener('mouseup', (e) => activeState?.onMouseUp?.(e));
+        canvas.addEventListener('mouseleave', () => activeState?.onMouseLeave?.());
+        canvas.addEventListener('mousemove', (e) => activeState?.onMouseMove?.(e));
+
+        function removeArchitectBody(body) {
+            Composite.remove(architectLayer, body);
+            const idx = undoStack.indexOf(body);
+            if (idx > -1) undoStack.splice(idx, 1);
+            if (body.label === 'fan-field') {
+                fanFields = fanFields.filter(f => f.body !== body);
             }
-            isDrawing = false;
-            lastDrawPoint = null;
-            startDrawPoint = null;
-            currentDrawPoint = null;
-        });
-        
-        canvas.addEventListener('mouseleave', () => { isDrawing = false; lastDrawPoint = null; startDrawPoint = null; });
-        
-        canvas.addEventListener('mousemove', (e) => {
-            let pt = { x: e.offsetX, y: e.offsetY };
+        }
 
-            // Trigger hover-based explosion
-            if (SETTINGS.interactionMode === 'shatter' && SETTINGS.triggerMode === 'hover') {
-                checkShatterAt(pt);
-            }
-
-            if (SETTINGS.interactionMode === 'draw') {
-                if (SETTINGS.architectTool === 'line' && startDrawPoint && e.shiftKey) {
-                    const dx = Math.abs(pt.x - startDrawPoint.x);
-                    const dy = Math.abs(pt.y - startDrawPoint.y);
-                    if (dx > dy) pt.y = startDrawPoint.y;
-                    else pt.x = startDrawPoint.x;
-                }
-                currentDrawPoint = pt;
-
-                if (isDrawing && SETTINGS.architectTool === 'freehand') {
-                    const dist = Math.hypot(pt.x - lastDrawPoint.x, pt.y - lastDrawPoint.y);
-                    if (dist > 10) {
-                        createLineSegment(lastDrawPoint, pt, dist);
-                        lastDrawPoint = pt;
-                    }
-                } 
-                
-                if (SETTINGS.architectTool === 'eraser') {
-                    hoveredEraseBody = null;
-                    const bodies = Composite.allBodies(architectLayer);
-                    const eraseRadius = 20;
-                    
-                    for (let b of bodies) {
-                        if (Math.abs(b.position.x - pt.x) < 100 && Math.abs(b.position.y - pt.y) < 100) {
-                             if (Matter.Vertices.contains(b.vertices, pt) || 
-                                Math.hypot(b.position.x - pt.x, b.position.y - pt.y) < eraseRadius) {
-                                hoveredEraseBody = b;
-                                break;
-                            }
-                        }
-                    }
+        function findEraseTarget(pt) {
+            const bodies = Composite.allBodies(architectLayer);
+            const eraseRadius = 20;
+            for (let b of bodies) {
+                if (Matter.Vertices.contains(b.vertices, pt) ||
+                    Math.hypot(b.position.x - pt.x, b.position.y - pt.y) < eraseRadius) {
+                    return b;
                 }
             }
-        });
+            return null;
+        }
+
+        function getLineProps() {
+            if (SETTINGS.lineType === 'kill') {
+                return { color: CONFIG.colors.kill, isSensor: true, restitution: 0, label: 'kill-line' };
+            }
+            if (SETTINGS.lineType === 'bounce') {
+                return { color: CONFIG.colors.bounce, isSensor: false, restitution: 1.5, label: 'bounce-line' };
+            }
+            return { color: currentLineColor || CONFIG.colors.line, isSensor: false, restitution: 0, label: 'drawn-line' };
+        }
+
+        function createFan(pt) {
+            const dir = SETTINGS.fanDirection;
+            const body = Bodies.circle(pt.x, pt.y, 12, {
+                isStatic: true,
+                isSensor: true,
+                render: { visible: true, fillStyle: '#224466' },
+                label: 'fan-field',
+                plugin: { dir: { ...dir }, strength: SETTINGS.fanStrength }
+            });
+            Composite.add(architectLayer, body);
+            undoStack.push(body);
+            fanFields.push({
+                body,
+                radius: SETTINGS.fanRadius,
+                dir: { ...dir },
+                strength: SETTINGS.fanStrength
+            });
+        }
 
         function createLineSegment(p1, p2, dist) {
             const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
             const midX = (p1.x + p2.x) / 2;
             const midY = (p1.y + p2.y) / 2;
+            const props = getLineProps();
             const body = Bodies.rectangle(midX, midY, dist, SETTINGS.lineThickness, {
                 isStatic: true,
                 angle: angle,
                 friction: SETTINGS.lineFriction,
-                render: { visible: true, fillStyle: currentLineColor },
-                label: 'drawn-line'
+                restitution: props.restitution || 0,
+                isSensor: props.isSensor || false,
+                render: { visible: true, fillStyle: props.color },
+                label: props.label,
+                plugin: { lineType: SETTINGS.lineType }
             });
             Composite.add(architectLayer, body);
             undoStack.push(body); 
@@ -682,52 +908,31 @@
         }
         refillQueue();
 
-        function createWord(text, x, y) {
-            const group = Body.nextGroup(true);
-            const letterBodies = [];
-            const isHeb = /[\u0590-\u05FF]/.test(text);
-            const chars = Array.from(text);
-            
-            for (let i = 0; i < chars.length; i++) {
-                let xPos = isHeb ? x + (chars.length - 1 - i) * CONFIG.letterSpacing : x + (i * CONFIG.letterSpacing);
-                const body = Bodies.rectangle(xPos, y, CONFIG.fontSize * 0.5, CONFIG.fontSize, {
-                    collisionFilter: { group: group },
-                    friction: 0.9, density: 0.02,
-                    plugin: { char: chars[i], isBroken: false, color: isHeb ? CONFIG.colors.hebrew : CONFIG.colors.english }
-                });
-                letterBodies.push(body);
-            }
-            const constraints = [];
-            for (let i = 0; i < letterBodies.length - 1; i++) {
-                constraints.push(Constraint.create({
-                    bodyA: letterBodies[i], bodyB: letterBodies[i+1],
-                    stiffness: 0.8, length: CONFIG.letterSpacing, render: { visible: false }
-                }));
-            }
-            const composite = Composite.create();
-            Composite.add(composite, letterBodies);
-            Composite.add(composite, constraints);
-            composite.plugin = { intact: true };
-            return composite;
-        }
-
         let spawnTimer = 0;
         let frameCount = 0;
         
-        function triggerSpawn(text) {
+        function triggerSpawn(text, options = {}) {
             const x = (width/2) + (Math.random()-0.5) * (width*0.6);
-            const comp = createWord(text, x, -100);
+            const comp = wordFactory.create(text, x, -100, options);
             Composite.rotate(comp, (Math.random()-0.5), {x:x, y:-100});
             Composite.add(world, comp);
             wordComposites.push(comp);
         }
 
+        Events.on(engine, 'collisionStart', (event) => {
+            event.pairs.forEach(pair => {
+                const killBody = [pair.bodyA, pair.bodyB].find(b => b.label === 'kill-line');
+                const letterBody = [pair.bodyA, pair.bodyB].find(b => b.plugin && b.plugin.wordComposite);
+                if (killBody && letterBody && letterBody.plugin.wordComposite?.plugin?.intact) {
+                    shatter(letterBody.plugin.wordComposite, letterBody.position);
+                }
+            });
+        });
+
         function update() {
             frameCount++;
             Engine.update(engine, 1000 / 60);
             engine.world.gravity.y = SETTINGS.gravity;
-
-            mouseConstraint.constraint.stiffness = (SETTINGS.interactionMode === 'drag') ? 0.1 : 0;
 
             // Only Auto-Spawn if in Auto Mode
             if (SETTINGS.spawnMode === 'auto') {
@@ -741,6 +946,8 @@
                 spawnTimer--;
             }
             
+            applyFanForces();
+            updateAudioTension();
             garbageCollect();
             draw();
             requestAnimationFrame(update);
@@ -763,9 +970,10 @@
         }
 
         function shatter(comp, source) {
+            if (!comp.plugin.intact) return;
             comp.plugin.intact = false;
             Composite.remove(comp, Composite.allConstraints(comp)); 
-            AudioEngine.triggerBreak((source.x / width) * 2 - 1); 
+            audioEngine.triggerBreak((source.x / width) * 2 - 1); 
             
             Composite.allBodies(comp).forEach(b => {
                 b.plugin.char = GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
@@ -773,20 +981,46 @@
                 b.friction = 0.05; 
                 b.restitution = 0.1;
                 Sleeping.set(b, false);
-                let fx = b.position.x - source.x;
-                let fy = b.position.y - source.y;
-                let len = Math.hypot(fx, fy) || 1;
+                const fx = b.position.x - source.x;
+                const fy = b.position.y - source.y;
+                const len = Math.hypot(fx, fy) || 1;
                 const forceMag = SETTINGS.force * b.mass;
                 Body.applyForce(b, b.position, { x: (fx/len)*forceMag, y: (fy/len)*forceMag });
                 Body.setAngularVelocity(b, (Math.random()-0.5)*0.3);
                 
-                for(let i=0; i<3; i++) particles.push({
-                    x: b.position.x, y: b.position.y,
-                    vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10,
-                    life: 1.0, size: Math.random()*2+1
-                });
+                for(let i=0; i<3; i++) particles.push(new Particle(b.position.x, b.position.y));
             });
             glitchIntensity = 5;
+        }
+
+        function applyFanForces() {
+            if (fanFields.length === 0) return;
+            const bodies = Composite.allBodies(world).filter(b => b.plugin && b.plugin.char);
+            fanFields.forEach(fan => {
+                bodies.forEach(b => {
+                    const dx = b.position.x - fan.body.position.x;
+                    const dy = b.position.y - fan.body.position.y;
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < fan.radius) {
+                        const falloff = 1 - (dist / fan.radius);
+                        Body.applyForce(b, b.position, { 
+                            x: fan.dir.x * fan.strength * falloff * b.mass, 
+                            y: fan.dir.y * fan.strength * falloff * b.mass 
+                        });
+                    }
+                });
+            });
+        }
+
+        function updateAudioTension() {
+            const textBodies = Composite.allBodies(world).filter(b => b.plugin && b.plugin.char);
+            if (textBodies.length === 0) {
+                audioEngine.setTension(0);
+                return;
+            }
+            const highest = Math.min(...textBodies.map(b => b.position.y));
+            const tension = Math.max(0, 1 - (highest / (height * 0.8)));
+            audioEngine.setTension(Math.min(1, tension));
         }
 
         function garbageCollect() {
@@ -828,19 +1062,39 @@
             
             // Draw Architect Lines
             architectBodies.forEach(b => {
-                if (b.label === 'drawn-line') {
-                    ctx.beginPath();
-                    
-                    if (b === hoveredEraseBody) {
-                        ctx.strokeStyle = '#ff5555';
-                        ctx.lineWidth = b.isSensor ? 1 : 2;
-                        ctx.moveTo(b.vertices[0].x, b.vertices[0].y);
-                        for(let j=1; j<b.vertices.length; j++) ctx.lineTo(b.vertices[j].x, b.vertices[j].y);
-                        ctx.lineTo(b.vertices[0].x, b.vertices[0].y);
+                if (b.label === 'fan-field') {
+                    const fan = fanFields.find(f => f.body === b);
+                    const dir = b.plugin?.dir || { x: 0, y: -1 };
+                    ctx.save();
+                    ctx.translate(b.position.x, b.position.y);
+                    ctx.strokeStyle = '#77aaff';
+                    ctx.lineWidth = 1;
+                    ctx.globalAlpha = 0.2;
+                    if (fan) {
+                        ctx.beginPath();
+                        ctx.arc(0, 0, fan.radius, 0, Math.PI*2);
                         ctx.stroke();
-                        ctx.beginPath(); 
                     }
+                    ctx.globalAlpha = 1;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 12, 0, Math.PI*2);
+                    ctx.fillStyle = '#0f1f3a';
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.rotate(Math.atan2(dir.y, dir.x));
+                    ctx.fillStyle = '#77aaff';
+                    ctx.beginPath();
+                    ctx.moveTo(-6, 4);
+                    ctx.lineTo(6, 0);
+                    ctx.lineTo(-6, -4);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                    return;
+                }
 
+                if (b.label === 'drawn-line' || b.label === 'kill-line' || b.label === 'bounce-line') {
+                    ctx.beginPath();
                     ctx.moveTo(b.vertices[0].x, b.vertices[0].y);
                     for(let j=1; j<b.vertices.length; j++) {
                         ctx.lineTo(b.vertices[j].x, b.vertices[j].y);
@@ -848,17 +1102,15 @@
                     ctx.lineTo(b.vertices[0].x, b.vertices[0].y);
                     
                     ctx.fillStyle = b.render.fillStyle || '#ffffff';
+                    ctx.globalAlpha = b.label === 'kill-line' ? 0.7 : 1;
                     ctx.fill();
 
                     ctx.beginPath();
-                    ctx.strokeStyle = b.render.fillStyle || '#ffffff';
-                    ctx.globalAlpha = 0.4;
-                    ctx.lineWidth = 1;
-                    const jitter = 0.5;
-                    ctx.moveTo(b.vertices[0].x + (Math.random()-0.5)*jitter, b.vertices[0].y + (Math.random()-0.5)*jitter);
-                    for(let j=1; j<b.vertices.length; j++) {
-                       ctx.lineTo(b.vertices[j].x + (Math.random()-0.5)*jitter, b.vertices[j].y + (Math.random()-0.5)*jitter);
-                    }
+                    ctx.strokeStyle = drawState.hoveredEraseBody === b ? '#ff5555' : (b.render.fillStyle || '#ffffff');
+                    ctx.globalAlpha = 0.6;
+                    ctx.lineWidth = drawState.hoveredEraseBody === b ? 2 : 1;
+                    ctx.moveTo(b.vertices[0].x, b.vertices[0].y);
+                    for(let j=1; j<b.vertices.length; j++) ctx.lineTo(b.vertices[j].x, b.vertices[j].y);
                     ctx.stroke();
                     ctx.globalAlpha = 1.0;
                 }
@@ -871,7 +1123,7 @@
                     ctx.translate(b.position.x, b.position.y);
                     ctx.rotate(b.angle);
                     ctx.textAlign="center"; ctx.textBaseline="middle";
-                    ctx.font = `${CONFIG.fontSize}px 'Courier New'`;
+                    ctx.font = `${b.plugin.size || CONFIG.fontSize}px 'Courier New'`;
                     
                     const isHebrew = /[\u0590-\u05FF]/.test(b.plugin.char);
                     if (isHebrew && !b.plugin.isBroken) {
@@ -894,23 +1146,17 @@
             // Draw Particles
             for(let i=particles.length-1; i>=0; i--) {
                 let p = particles[i];
-                p.life -= 0.03;
-                if(p.life<=0) particles.splice(i,1);
-                else {
-                    ctx.fillStyle = CONFIG.colors.dust;
-                    ctx.globalAlpha = p.life;
-                    ctx.fillRect(p.x, p.y, p.size, p.size);
-                    p.x += p.vx; p.y += p.vy;
-                }
+                if(!p.update()) particles.splice(i,1);
+                else p.draw(ctx, CONFIG.colors.dust);
             }
             ctx.globalAlpha = 1;
 
             // Draw Tool Overlays
-            if (SETTINGS.interactionMode === 'draw' && currentDrawPoint) {
-                if (SETTINGS.architectTool === 'line' && isDrawing && startDrawPoint) {
+            if (SETTINGS.interactionMode === 'draw' && drawState.currentPoint) {
+                if (SETTINGS.architectTool === 'line' && drawState.isDrawing && drawState.startPoint) {
                     ctx.beginPath();
-                    ctx.moveTo(startDrawPoint.x, startDrawPoint.y);
-                    ctx.lineTo(currentDrawPoint.x, currentDrawPoint.y);
+                    ctx.moveTo(drawState.startPoint.x, drawState.startPoint.y);
+                    ctx.lineTo(drawState.currentPoint.x, drawState.currentPoint.y);
                     ctx.strokeStyle = '#fff';
                     ctx.lineWidth = 1;
                     ctx.setLineDash([5, 5]);
@@ -918,9 +1164,9 @@
                     ctx.setLineDash([]);
                 } else if (SETTINGS.architectTool === 'eraser') {
                     ctx.beginPath();
-                    ctx.arc(currentDrawPoint.x, currentDrawPoint.y, 20, 0, Math.PI*2);
-                    ctx.strokeStyle = hoveredEraseBody ? '#ff5555' : '#777';
-                    ctx.lineWidth = hoveredEraseBody ? 2 : 1;
+                    ctx.arc(drawState.currentPoint.x, drawState.currentPoint.y, 20, 0, Math.PI*2);
+                    ctx.strokeStyle = drawState.hoveredEraseBody ? '#ff5555' : '#777';
+                    ctx.lineWidth = drawState.hoveredEraseBody ? 2 : 1;
                     ctx.stroke();
                 }
             }
@@ -932,7 +1178,7 @@
         const panel = document.getElementById('control-panel');
         const trigger = document.getElementById('settings-trigger');
         trigger.addEventListener('click', () => panel.classList.toggle('active'));
-        document.addEventListener('click', () => { if(!AudioEngine.initialized) AudioEngine.init(); });
+        document.addEventListener('click', () => { if(!audioEngine.initialized) audioEngine.init(); });
 
         const bindSlider = (id, settingKey, displayId) => {
             const el = document.getElementById(id);
@@ -950,14 +1196,56 @@
         bindSlider('inp-friction', 'lineFriction', 'val-friction');
         bindSlider('inp-thickness', 'lineThickness', 'val-thickness');
 
+        const btnLineStandard = document.getElementById('btn-line-standard');
+        const btnLineKill = document.getElementById('btn-line-kill');
+        const btnLineBounce = document.getElementById('btn-line-bounce');
+
+        const setLineType = (type) => {
+            SETTINGS.lineType = type;
+            btnLineStandard.classList.toggle('active', type === 'standard');
+            btnLineKill.classList.toggle('active', type === 'kill');
+            btnLineBounce.classList.toggle('active', type === 'bounce');
+        };
+
+        btnLineStandard.addEventListener('click', () => setLineType('standard'));
+        btnLineKill.addEventListener('click', () => setLineType('kill'));
+        btnLineBounce.addEventListener('click', () => setLineType('bounce'));
+
+        const btnFanLeft = document.getElementById('btn-fan-left');
+        const btnFanUp = document.getElementById('btn-fan-up');
+        const btnFanRight = document.getElementById('btn-fan-right');
+        const btnFanDown = document.getElementById('btn-fan-down');
+
+        const setFanDirection = (dir) => {
+            SETTINGS.fanDirection = dir;
+            btnFanLeft.classList.toggle('active', dir.x === -1 && dir.y === 0);
+            btnFanUp.classList.toggle('active', dir.x === 0 && dir.y === -1);
+            btnFanRight.classList.toggle('active', dir.x === 1 && dir.y === 0);
+            btnFanDown.classList.toggle('active', dir.x === 0 && dir.y === 1);
+        };
+
+        btnFanLeft.addEventListener('click', () => setFanDirection({ x: -1, y: 0 }));
+        btnFanUp.addEventListener('click', () => setFanDirection({ x: 0, y: -1 }));
+        btnFanRight.addEventListener('click', () => setFanDirection({ x: 1, y: 0 }));
+        btnFanDown.addEventListener('click', () => setFanDirection({ x: 0, y: 1 }));
+
+        const fanStrengthSlider = document.getElementById('inp-fan-strength');
+        const fanStrengthVal = document.getElementById('val-fan-strength');
+        fanStrengthSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            SETTINGS.fanStrength = val;
+            fanStrengthVal.innerText = val.toFixed(4);
+            fanFields.forEach(f => f.strength = val);
+        });
+
         document.getElementById('inp-vol').addEventListener('input', (e) => {
             const val = parseFloat(e.target.value);
             document.getElementById('val-vol').innerText = val;
-            AudioEngine.setVolume(val);
+            audioEngine.setVolume(val);
         });
         document.getElementById('btn-audio-toggle').addEventListener('click', (e) => {
             e.stopPropagation(); 
-            AudioEngine.toggle();
+            audioEngine.toggle();
         });
 
         // Mode Toggles
@@ -966,13 +1254,17 @@
         const btnDraw = document.getElementById('btn-mode-draw');
         
         const setMode = (mode) => {
+            activeState?.exit?.();
             SETTINGS.interactionMode = mode;
+            activeState = mode === 'drag' ? dragState : (mode === 'draw' ? drawState : shatterState);
+            activeState?.enter?.();
             btnDrag.classList.toggle('active', mode === 'drag');
             btnShatter.classList.toggle('active', mode === 'shatter');
             btnDraw.classList.toggle('active', mode === 'draw');
             
             document.body.classList.remove('mode-drag', 'mode-shatter', 'mode-draw');
             document.body.classList.add(`mode-${mode}`);
+            if (mode !== 'draw') drawState.reset();
         };
 
         btnDrag.addEventListener('click', () => setMode('drag'));
@@ -982,22 +1274,26 @@
         // Architect Sub-Tools
         const btnToolFree = document.getElementById('btn-tool-free');
         const btnToolLine = document.getElementById('btn-tool-line');
+        const btnToolFan = document.getElementById('btn-tool-fan');
         const btnToolErase = document.getElementById('btn-tool-erase');
 
         const setArchitectTool = (tool) => {
             SETTINGS.architectTool = tool;
             btnToolFree.classList.toggle('active', tool === 'freehand');
             btnToolLine.classList.toggle('active', tool === 'line');
+            btnToolFan.classList.toggle('active', tool === 'fan');
             btnToolErase.classList.toggle('active', tool === 'eraser');
             
-            document.body.classList.remove('tool-free', 'tool-line', 'tool-erase');
+            document.body.classList.remove('tool-free', 'tool-line', 'tool-fan', 'tool-erase');
             document.body.classList.add(`tool-${tool}`);
         };
 
         btnToolFree.addEventListener('click', () => setArchitectTool('freehand'));
         btnToolLine.addEventListener('click', () => setArchitectTool('line'));
+        btnToolFan.addEventListener('click', () => setArchitectTool('fan'));
         btnToolErase.addEventListener('click', () => setArchitectTool('eraser'));
         document.body.classList.add('tool-free');
+        setMode('shatter');
 
         // Trigger Mode Toggles
         const btnTrigClick = document.getElementById('btn-trigger-click');
@@ -1065,11 +1361,15 @@
 
         document.getElementById('btn-clear').addEventListener('click', () => {
             Composite.clear(world, false, true); 
+            Composite.clear(architectLayer, false, true);
+            Composite.add(world, architectLayer);
+            Composite.add(world, mouseConstraint);
             resize(); 
             wordComposites = [];
             refillQueue();
             undoStack = [];
             particles = [];
+            fanFields = [];
         });
         document.getElementById('inp-loop').addEventListener('change', (e) => SETTINGS.loop = e.target.checked);
 
@@ -1086,13 +1386,28 @@
         // 2. SAVE LAYOUT
         document.getElementById('btn-save').addEventListener('click', () => {
             const lines = Composite.allBodies(architectLayer).map(b => {
+                if (b.label === 'fan-field') {
+                    const fan = fanFields.find(f => f.body === b);
+                    return {
+                        kind: 'fan',
+                        x: b.position.x,
+                        y: b.position.y,
+                        dir: fan?.dir || b.plugin?.dir || { x: 0, y: -1 },
+                        strength: fan?.strength || SETTINGS.fanStrength,
+                        radius: fan?.radius || SETTINGS.fanRadius
+                    };
+                }
                 const len = Math.hypot(b.vertices[1].x - b.vertices[0].x, b.vertices[1].y - b.vertices[0].y);
+                const thickness = Math.hypot(b.vertices[0].x - b.vertices[3].x, b.vertices[0].y - b.vertices[3].y);
                 return { 
+                    kind: 'line',
                     x: b.position.x, 
                     y: b.position.y, 
                     angle: b.angle, 
                     length: len,
-                    color: b.render.fillStyle || '#ffffff' 
+                    thickness: thickness,
+                    color: b.render.fillStyle || '#ffffff',
+                    lineType: b.plugin?.lineType || 'standard'
                 };
             });
 
@@ -1111,15 +1426,40 @@
             
             Composite.clear(architectLayer, false, true);
             undoStack = [];
+            fanFields = [];
 
             const data = JSON.parse(raw);
-            data.forEach(lineData => {
-                const body = Bodies.rectangle(lineData.x, lineData.y, lineData.length, SETTINGS.lineThickness, {
+            data.forEach(item => {
+                if (item.kind === 'fan') {
+                    const body = Bodies.circle(item.x, item.y, 12, {
+                        isStatic: true,
+                        isSensor: true,
+                        render: { visible: true, fillStyle: '#224466' },
+                        label: 'fan-field',
+                        plugin: { dir: { ...(item.dir || { x: 0, y: -1 }) }, strength: item.strength || SETTINGS.fanStrength }
+                    });
+                    Composite.add(architectLayer, body);
+                    undoStack.push(body);
+                    fanFields.push({
+                        body,
+                        radius: item.radius || SETTINGS.fanRadius,
+                        dir: { ...(item.dir || { x: 0, y: -1 }) },
+                        strength: item.strength || SETTINGS.fanStrength
+                    });
+                    return;
+                }
+
+                const lineType = item.lineType || 'standard';
+                const color = item.color || (lineType === 'kill' ? CONFIG.colors.kill : (lineType === 'bounce' ? CONFIG.colors.bounce : currentLineColor));
+                const body = Bodies.rectangle(item.x, item.y, item.length, item.thickness || SETTINGS.lineThickness, {
                     isStatic: true,
-                    angle: lineData.angle,
+                    angle: item.angle,
                     friction: SETTINGS.lineFriction,
-                    render: { visible: true, fillStyle: lineData.color || '#ffffff' },
-                    label: 'drawn-line'
+                    restitution: lineType === 'bounce' ? 1.5 : 0,
+                    isSensor: lineType === 'kill',
+                    render: { visible: true, fillStyle: color },
+                    label: lineType === 'kill' ? 'kill-line' : (lineType === 'bounce' ? 'bounce-line' : 'drawn-line'),
+                    plugin: { lineType }
                 });
                 Composite.add(architectLayer, body);
                 undoStack.push(body);
@@ -1146,6 +1486,7 @@
                 colorBtns.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentLineColor = btn.getAttribute('data-col');
+                CONFIG.colors.line = currentLineColor;
             });
         });
 
@@ -1157,6 +1498,11 @@
             document.getElementById('bg-reference').style.backgroundImage = '';
             document.getElementById('inp-bg-url').value = '';
         });
+
+        setLineType(SETTINGS.lineType);
+        setFanDirection(SETTINGS.fanDirection);
+        fanStrengthVal.innerText = SETTINGS.fanStrength.toFixed(4);
+        fanStrengthSlider.value = SETTINGS.fanStrength;
 
         update();
 
