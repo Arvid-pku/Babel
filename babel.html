@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Fall of Babel: Architect Mode IV</title>
+    <title>The Fall of Babel: Architect Mode VII (Typist)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         :root {
             --bg: #050505;
             --text: #cccccc;
             --accent: #eebb99; /* Hebrew Gold */
-            --panel-bg: rgba(10, 10, 10, 0.85);
+            --panel-bg: rgba(10, 10, 10, 0.90);
             --border: #333;
             --danger: #ff5555;
+            --active-tab: #222;
         }
         body {
             margin: 0; padding: 0; overflow: hidden;
@@ -21,7 +22,7 @@
             font-family: 'Courier New', Courier, monospace;
             user-select: none;
         }
-        canvas { display: block; }
+        canvas { display: block; position: relative; z-index: 1; }
         
         /* Cursor styling */
         body.mode-drag canvas { cursor: grab; }
@@ -38,6 +39,13 @@
             pointer-events: none; z-index: 10;
         }
 
+        /* Background Reference Layer */
+        #bg-reference {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            background-size: contain; background-repeat: no-repeat; background-position: center;
+            opacity: 0.3; pointer-events: none; z-index: 0;
+        }
+
         #settings-trigger {
             position: absolute; top: 20px; right: 20px;
             font-size: 24px; cursor: pointer; pointer-events: auto;
@@ -46,28 +54,63 @@
         }
         #settings-trigger:hover { color: var(--text); transform: rotate(90deg); }
 
+        /* --- NEW CONTROL PANEL LAYOUT --- */
         #control-panel {
             position: absolute; top: 0; right: 0;
-            width: 340px; height: 100%;
+            width: 360px; height: 100%;
             background: var(--panel-bg);
             border-left: 1px solid var(--border);
             backdrop-filter: blur(10px);
             transform: translateX(100%);
             transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
             pointer-events: auto;
-            padding: 30px;
-            box-sizing: border-box;
-            display: flex; flex-direction: column; gap: 25px;
-            overflow-y: auto;
+            display: flex; flex-direction: column;
         }
         #control-panel.active { transform: translateX(0); }
 
+        /* Fixed Header Area */
+        .panel-header {
+            padding: 20px 20px 10px 20px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        /* Tabs Navigation */
+        .tabs-nav {
+            display: flex;
+            background: #000;
+            border-bottom: 1px solid var(--border);
+        }
+        .tabs-nav button {
+            flex: 1; border: none; background: transparent;
+            padding: 12px 0; font-size: 11px; color: #666;
+            cursor: pointer; border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tabs-nav button:hover { color: #aaa; background: #111; }
+        .tabs-nav button.active { 
+            color: var(--accent); border-bottom: 2px solid var(--accent); background: #0a0a0a; 
+        }
+
+        /* Scrollable Content Area */
+        .panel-content {
+            flex: 1; overflow-y: auto; padding: 20px;
+            position: relative;
+        }
+
+        /* Tab Contents */
+        .tab-section { display: none; flex-direction: column; gap: 25px; animation: fadeIn 0.3s ease; }
+        .tab-section.active { display: flex; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Standard Controls */
         h2 { 
-            font-size: 12px; border-bottom: 1px solid var(--border); 
-            padding-bottom: 5px; margin: 0; color: #666; letter-spacing: 3px; 
+            font-size: 10px; border-bottom: 1px solid var(--border); 
+            padding-bottom: 5px; margin: 0 0 10px 0; color: #666; letter-spacing: 2px; 
         }
         
-        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        .control-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 5px; }
         .label-row { display: flex; justify-content: space-between; font-size: 10px; color: #888; }
         
         input[type="range"] { -webkit-appearance: none; width: 100%; background: transparent; }
@@ -97,8 +140,12 @@
         .mode-toggle-group { display: flex; gap: 5px; }
         .mode-toggle-group button { flex: 1; font-size: 9px; padding: 10px 5px; }
 
-        /* Sub controls for Architect mode */
-        #architect-controls { display: none; padding-left: 10px; border-left: 2px solid var(--accent); }
+        /* Color Picker Buttons */
+        #line-color-picker button { flex:1; height:20px; border:1px solid #333; }
+        #line-color-picker button:hover { opacity: 0.8; }
+        #line-color-picker button.active { border:2px solid #fff; transform:scale(1.1); box-shadow: 0 0 10px rgba(255,255,255,0.2); }
+
+        #architect-controls { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #333; }
         .mode-draw #architect-controls { display: flex; }
 
         #audio-status {
@@ -112,19 +159,29 @@
             font-size: 11px; color: #666;
             pointer-events: none;
             display: none;
+            z-index: 20;
         }
         .mode-draw #tooltip { display: block; }
+
+        /* Typing Buffer Visual */
+        #typing-buffer-display {
+            position: absolute; top: 50px; left: 20px;
+            font-size: 14px; color: var(--accent);
+            opacity: 0.7; pointer-events: none;
+        }
 
         .vignette {
             position: absolute; top:0; left:0; width:100%; height:100%;
             background: radial-gradient(circle, transparent 40%, black 140%);
             pointer-events: none;
+            z-index: 5;
         }
         .grain {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             opacity: 0.05; pointer-events: none;
             background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
             animation: grain 1s steps(10) infinite;
+            z-index: 5;
         }
         @keyframes grain { 0%, 100% {transform:translate(0,0)} 20% {transform:translate(-2px,2px)} 40% {transform:translate(2px,-2px)} 60% {transform:translate(-2px,-2px)} 80% {transform:translate(2px,2px)} }
     </style>
@@ -132,86 +189,174 @@
 <body class="mode-shatter">
 
     <div id="ui-layer">
+        <div id="bg-reference"></div>
         <div class="grain"></div>
         <div class="vignette"></div>
         <div id="audio-status">AUDIO ENGINE :: ONLINE</div>
         <div id="tooltip">[SHIFT] Snap Axis • [CTRL+Z] Undo</div>
+        <div id="typing-buffer-display"></div>
         <div id="settings-trigger">[ ☼ ]</div>
         
         <div id="control-panel">
-            <h2>CURSOR MODE</h2>
-            <div class="control-group mode-toggle-group">
-                <button id="btn-mode-drag">MANIPULATE</button>
-                <button id="btn-mode-shatter" class="active">DISRUPT</button>
-                <button id="btn-mode-draw">ARCHITECT</button>
-            </div>
-
-            <div id="architect-controls" class="control-group">
-                <div class="label-row" style="margin-bottom:5px;"><span>TOOL SELECTION</span></div>
-                <div class="mode-toggle-group">
-                    <button id="btn-tool-free" class="active">FREEHAND</button>
-                    <button id="btn-tool-line">STRAIGHT</button>
-                    <button id="btn-tool-erase">ERASER</button>
+            
+            <div class="panel-header">
+                <h2>CURSOR MODE</h2>
+                <div class="control-group mode-toggle-group">
+                    <button id="btn-mode-drag">MANIPULATE</button>
+                    <button id="btn-mode-shatter" class="active">DISRUPT</button>
+                    <button id="btn-mode-draw">ARCHITECT</button>
+                </div>
+                <div id="architect-controls" class="control-group">
+                    <div class="label-row" style="margin-bottom:5px;"><span>TOOL</span></div>
+                    <div class="mode-toggle-group">
+                        <button id="btn-tool-free" class="active">FREE</button>
+                        <button id="btn-tool-line">LINE</button>
+                        <button id="btn-tool-erase">ERASE</button>
+                    </div>
                 </div>
             </div>
 
-            <h2>ARCHITECT SETTINGS</h2>
-            <div class="control-group">
-                <div class="label-row"><span>LINE FRICTION</span><span id="val-friction">0.1</span></div>
-                <input type="range" id="inp-friction" min="0" max="1" step="0.05" value="0.1">
-            </div>
-            <div class="control-group">
-                <div class="label-row"><span>LINE THICKNESS</span><span id="val-thickness">4</span></div>
-                <input type="range" id="inp-thickness" min="2" max="40" step="1" value="4">
+            <div class="tabs-nav">
+                <button class="tab-btn active" data-target="tab-sim">SIM</button>
+                <button class="tab-btn" data-target="tab-arch">ARCH</button>
+                <button class="tab-btn" data-target="tab-vis">VIS</button>
+                <button class="tab-btn" data-target="tab-data">DATA</button>
             </div>
 
-            <h2>AUDIO CONTROL</h2>
-            <div class="control-group">
-                <button id="btn-audio-toggle">INITIALIZE AUDIO SYSTEM</button>
-            </div>
-            <div class="control-group">
-                <div class="label-row"><span>MASTER VOLUME</span><span id="val-vol">0.5</span></div>
-                <input type="range" id="inp-vol" min="0" max="1" step="0.05" value="0.5">
-            </div>
+            <div class="panel-content">
+                
+                <div id="tab-sim" class="tab-section active">
+                    <h2>SPAWN MODE</h2>
+                    <div class="control-group mode-toggle-group">
+                        <button id="btn-spawn-auto" class="active">AUTO DROP</button>
+                        <button id="btn-spawn-type">TYPE INPUT</button>
+                    </div>
+                    
+                    <div id="typing-settings" class="control-group" style="display:none; margin-top:5px; border-top:1px dashed #333; padding-top:10px;">
+                        <div class="label-row" style="margin-bottom:5px;"><span>INPUT METHOD</span></div>
+                        <div class="mode-toggle-group">
+                            <button id="btn-type-char" class="active">1 KEY = 1 CHAR</button>
+                            <button id="btn-type-enter">DROP ON ENTER</button>
+                        </div>
+                        <div style="font-size:9px; color:#666; margin-top:5px;">
+                            <span id="type-desc">Press any key to drop a character.</span>
+                        </div>
+                    </div>
 
-            <h2>PHYSICS</h2>
-            <div class="control-group">
-                <div class="label-row"><span>GRAVITY SCALE</span><span id="val-gravity">1.0</span></div>
-                <input type="range" id="inp-gravity" min="0" max="2" step="0.1" value="1">
-            </div>
-            <div class="control-group">
-                <div class="label-row"><span>DESTRUCTION FORCE</span><span id="val-force">0.12</span></div>
-                <input type="range" id="inp-force" min="0.01" max="0.5" step="0.01" value="0.12">
-            </div>
+                    <h2>INTERACTION TRIGGER</h2>
+                    <div class="control-group mode-toggle-group">
+                        <button id="btn-trigger-click" class="active">CLICK</button>
+                        <button id="btn-trigger-hover">HOVER</button>
+                    </div>
 
-            <h2>FLOW</h2>
-            <div class="control-group">
-                <div class="label-row"><span>DROP DELAY (FRAMES)</span><span id="val-speed">35</span></div>
-                <input type="range" id="inp-speed" min="5" max="100" step="1" value="35">
-            </div>
+                    <h2>PHYSICS</h2>
+                    <div class="control-group">
+                        <div class="label-row"><span>GRAVITY</span><span id="val-gravity">1.0</span></div>
+                        <input type="range" id="inp-gravity" min="0" max="2" step="0.1" value="1">
+                    </div>
+                    <div class="control-group">
+                        <div class="label-row"><span>FORCE</span><span id="val-force">0.12</span></div>
+                        <input type="range" id="inp-force" min="0.01" max="0.5" step="0.01" value="0.12">
+                    </div>
 
-            <h2>SOURCE TEXT</h2>
-            <div class="control-group">
-                <textarea id="inp-text" placeholder="Paste custom text..."></textarea>
-                <button id="btn-update-text">INJECT NEW STREAM</button>
+                    <h2>FLOW (AUTO MODE)</h2>
+                    <div class="control-group">
+                        <div class="label-row"><span>DELAY</span><span id="val-speed">35</span></div>
+                        <input type="range" id="inp-speed" min="5" max="100" step="1" value="35">
+                    </div>
+                    <div class="control-group" style="flex-direction:row; justify-content:space-between; align-items:center;">
+                        <span style="font-size:10px; color:#888;">INFINITE LOOP</span>
+                        <input type="checkbox" id="inp-loop" checked style="width:auto; margin:0;">
+                    </div>
+
+                    <h2>MAINTENANCE</h2>
+                    <button id="btn-sweep" style="color:#eebb99; border-color:#664422;">SWEEP DEBRIS</button>
+                    <button id="btn-clear" style="color:#ff6666; border-color:#663333;">PURGE ALL</button>
+                </div>
+
+                <div id="tab-arch" class="tab-section">
+                    <h2>BLUEPRINT</h2>
+                    <div class="control-group" style="display:flex; flex-direction:row; gap:5px;">
+                        <button id="btn-save" style="flex:1;">SAVE LAYOUT</button>
+                        <button id="btn-load" style="flex:1;">LOAD LAYOUT</button>
+                    </div>
+
+                    <h2>LINE PROPERTIES</h2>
+                    <div class="control-group">
+                        <div class="label-row"><span>FRICTION</span><span id="val-friction">0.1</span></div>
+                        <input type="range" id="inp-friction" min="0" max="1" step="0.05" value="0.1">
+                    </div>
+                    <div class="control-group">
+                        <div class="label-row"><span>THICKNESS</span><span id="val-thickness">4</span></div>
+                        <input type="range" id="inp-thickness" min="2" max="40" step="1" value="4">
+                    </div>
+                </div>
+
+                <div id="tab-vis" class="tab-section">
+                    <h2>TYPOGRAPHY</h2>
+                    <div class="control-group">
+                        <div class="label-row"><span>TEXT SIZE (RESETS)</span><span id="val-fontsize">22</span></div>
+                        <input type="range" id="inp-fontsize" min="10" max="60" step="2" value="22">
+                    </div>
+
+                    <h2>PALETTE</h2>
+                    <div class="control-group">
+                        <div class="label-row"><span>LINE COLOR</span></div>
+                        <div class="mode-toggle-group" id="line-color-picker">
+                            <button data-col="#ffffff" style="background:#fff;" class="active"></button>
+                            <button data-col="#eebb99" style="background:#eebb99;"></button>
+                            <button data-col="#ff5555" style="background:#ff5555;"></button>
+                            <button data-col="#5555ff" style="background:#5555ff;"></button>
+                        </div>
+                    </div>
+
+                    <h2>REFERENCE</h2>
+                    <div class="control-group">
+                        <div class="label-row"><span>IMAGE URL</span></div>
+                        <textarea id="inp-bg-url" placeholder="Paste image URL..." style="height:30px;"></textarea>
+                        <div class="mode-toggle-group">
+                            <button id="btn-load-bg">LOAD</button>
+                            <button id="btn-clear-bg">CLEAR</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-data" class="tab-section">
+                    <h2>AUDIO</h2>
+                    <div class="control-group">
+                        <button id="btn-audio-toggle">INITIALIZE AUDIO</button>
+                    </div>
+                    <div class="control-group">
+                        <div class="label-row"><span>VOLUME</span><span id="val-vol">0.5</span></div>
+                        <input type="range" id="inp-vol" min="0" max="1" step="0.05" value="0.5">
+                    </div>
+
+                    <h2>SOURCE TEXT</h2>
+                    <div class="control-group">
+                        <textarea id="inp-text" placeholder="Paste custom text..."></textarea>
+                        <button id="btn-update-text">INJECT NEW STREAM</button>
+                    </div>
+                </div>
+
             </div>
-            
-            <h2>SYSTEM</h2>
-            <div class="control-group" style="display:flex; flex-direction:row; gap:5px;">
-                <button id="btn-save" style="flex:1;">SAVE LAYOUT</button>
-                <button id="btn-load" style="flex:1;">LOAD LAYOUT</button>
-            </div>
-            <button id="btn-sweep" style="color:#eebb99; border-color:#664422;">SWEEP DEBRIS</button>
-            
-            <div class="control-group" style="flex-direction:row; justify-content:space-between; align-items:center;">
-                <span style="font-size:10px; color:#888;">INFINITE LOOP</span>
-                <input type="checkbox" id="inp-loop" checked style="width:auto; margin:0;">
-            </div>
-            <button id="btn-clear" style="color:#ff6666; border-color:#663333;">PURGE SIMULATION</button>
         </div>
     </div>
 
     <script>
+        // --- TAB SYSTEM LOGIC ---
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabSections = document.querySelectorAll('.tab-section');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => b.classList.remove('active'));
+                tabSections.forEach(s => s.classList.remove('active'));
+                btn.classList.add('active');
+                const target = document.getElementById(btn.dataset.target);
+                if(target) target.classList.add('active');
+            });
+        });
+
         // --- AUDIO ENGINE ---
         const AudioEngine = {
             ctx: null, masterGain: null, initialized: false,
@@ -225,12 +370,10 @@
                 compressor.ratio.setValueAtTime(12, this.ctx.currentTime);
                 compressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
                 compressor.release.setValueAtTime(0.25, this.ctx.currentTime);
-
                 this.masterGain = this.ctx.createGain();
                 this.masterGain.gain.value = 0.5;
                 this.masterGain.connect(compressor);
                 compressor.connect(this.ctx.destination);
-
                 this.initialized = true;
                 this.startDrone();
                 this.updateUI(true);
@@ -284,15 +427,20 @@
         // --- GLOBAL SETTINGS ---
         const SETTINGS = {
             gravity: 1.0,
-            force: 0.12,
+            force: 0.05,
             spawnInterval: 35,
             loop: true,
             interactionMode: 'shatter', 
             architectTool: 'freehand', 
+            triggerMode: 'hover', // 'click' or 'hover'
+            spawnMode: 'auto', // 'auto' or 'typing'
+            typingType: 'char', // 'char' or 'enter'
             textSource: [],
             lineFriction: 0.1,
             lineThickness: 4
         };
+
+        let typingBuffer = "";
 
         const DEFAULTS = [
             "Now the whole earth had one language and the same words.",
@@ -309,7 +457,7 @@
         ];
         SETTINGS.textSource = [...DEFAULTS];
 
-        const CONFIG = {
+        let CONFIG = {
             fontSize: 22, letterSpacing: 16, disruptRadius: 80, maxBodies: 700,
             colors: { english: '#cccccc', hebrew: '#eebb99', shard: '#555', dust: '#777' }
         };
@@ -341,6 +489,7 @@
         let walls = []; 
         let dpr = 1;
         let undoStack = []; 
+        let currentLineColor = '#ffffff';
 
         function resize() {
             width = window.innerWidth;
@@ -369,7 +518,7 @@
         });
         Composite.add(world, mouseConstraint);
 
-        // --- DRAWING LOGIC ---
+        // --- DRAWING & KEYBOARD LOGIC ---
         let isDrawing = false;
         let lastDrawPoint = null;
         let startDrawPoint = null; 
@@ -377,6 +526,7 @@
         let hoveredEraseBody = null; 
 
         document.addEventListener('keydown', (e) => {
+            // Undo Logic
             if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
                 if (undoStack.length > 0) {
                     const lastBody = undoStack.pop();
@@ -384,10 +534,45 @@
                     const nearby = Matter.Query.region(Composite.allBodies(world), lastBody.bounds);
                     nearby.forEach(b => Sleeping.set(b, false));
                 }
+                return;
+            }
+
+            // Typing Mode Logic
+            if (SETTINGS.spawnMode === 'typing') {
+                const bufferDisplay = document.getElementById('typing-buffer-display');
+
+                if (SETTINGS.typingType === 'char') {
+                    // One key = One char
+                    if (e.key.length === 1) {
+                        triggerSpawn(e.key);
+                    }
+                } else {
+                    // Enter Mode
+                    if (e.key === 'Enter') {
+                        if (typingBuffer.length > 0) {
+                            triggerSpawn(typingBuffer);
+                            typingBuffer = "";
+                            bufferDisplay.innerText = "";
+                        }
+                    } else if (e.key === 'Backspace') {
+                        typingBuffer = typingBuffer.slice(0, -1);
+                        bufferDisplay.innerText = typingBuffer + "_";
+                    } else if (e.key.length === 1) {
+                        typingBuffer += e.key;
+                        bufferDisplay.innerText = typingBuffer + "_";
+                    }
+                }
             }
         });
 
         canvas.addEventListener('mousedown', (e) => {
+            const clickPoint = { x: e.offsetX, y: e.offsetY };
+
+            // Trigger click-based explosion
+            if (SETTINGS.interactionMode === 'shatter' && SETTINGS.triggerMode === 'click') {
+                checkShatterAt(clickPoint);
+            }
+
             if (SETTINGS.interactionMode === 'draw') {
                 if (SETTINGS.architectTool === 'eraser' && hoveredEraseBody) {
                     Composite.remove(architectLayer, hoveredEraseBody);
@@ -398,10 +583,9 @@
                 }
 
                 isDrawing = true;
-                const pt = { x: e.offsetX, y: e.offsetY };
-                lastDrawPoint = pt;
-                startDrawPoint = pt;
-                currentDrawPoint = pt;
+                lastDrawPoint = clickPoint;
+                startDrawPoint = clickPoint;
+                currentDrawPoint = clickPoint;
             }
         });
 
@@ -425,9 +609,14 @@
         canvas.addEventListener('mouseleave', () => { isDrawing = false; lastDrawPoint = null; startDrawPoint = null; });
         
         canvas.addEventListener('mousemove', (e) => {
+            let pt = { x: e.offsetX, y: e.offsetY };
+
+            // Trigger hover-based explosion
+            if (SETTINGS.interactionMode === 'shatter' && SETTINGS.triggerMode === 'hover') {
+                checkShatterAt(pt);
+            }
+
             if (SETTINGS.interactionMode === 'draw') {
-                let pt = { x: e.offsetX, y: e.offsetY };
-                
                 if (SETTINGS.architectTool === 'line' && startDrawPoint && e.shiftKey) {
                     const dx = Math.abs(pt.x - startDrawPoint.x);
                     const dy = Math.abs(pt.y - startDrawPoint.y);
@@ -470,7 +659,7 @@
                 isStatic: true,
                 angle: angle,
                 friction: SETTINGS.lineFriction,
-                render: { visible: true },
+                render: { visible: true, fillStyle: currentLineColor },
                 label: 'drawn-line'
             });
             Composite.add(architectLayer, body);
@@ -525,6 +714,14 @@
         let spawnTimer = 0;
         let frameCount = 0;
         
+        function triggerSpawn(text) {
+            const x = (width/2) + (Math.random()-0.5) * (width*0.6);
+            const comp = createWord(text, x, -100);
+            Composite.rotate(comp, (Math.random()-0.5), {x:x, y:-100});
+            Composite.add(world, comp);
+            wordComposites.push(comp);
+        }
+
         function update() {
             frameCount++;
             Engine.update(engine, 1000 / 60);
@@ -532,28 +729,24 @@
 
             mouseConstraint.constraint.stiffness = (SETTINGS.interactionMode === 'drag') ? 0.1 : 0;
 
-            if (spawnTimer <= 0) {
-                if (wordQueue.length === 0 && SETTINGS.loop) refillQueue();
-                if (wordQueue.length > 0) {
-                    const text = wordQueue.shift();
-                    const x = (width/2) + (Math.random()-0.5) * (width*0.6);
-                    const comp = createWord(text, x, -100);
-                    Composite.rotate(comp, (Math.random()-0.5), {x:x, y:-100});
-                    Composite.add(world, comp);
-                    wordComposites.push(comp);
-                    spawnTimer = SETTINGS.spawnInterval;
+            // Only Auto-Spawn if in Auto Mode
+            if (SETTINGS.spawnMode === 'auto') {
+                if (spawnTimer <= 0) {
+                    if (wordQueue.length === 0 && SETTINGS.loop) refillQueue();
+                    if (wordQueue.length > 0) {
+                        triggerSpawn(wordQueue.shift());
+                        spawnTimer = SETTINGS.spawnInterval;
+                    }
                 }
+                spawnTimer--;
             }
-            spawnTimer--;
-            checkInteraction();
+            
             garbageCollect();
             draw();
             requestAnimationFrame(update);
         }
 
-        function checkInteraction() {
-            if (SETTINGS.interactionMode !== 'shatter') return;
-
+        function checkShatterAt(point) {
             wordComposites.forEach(comp => {
                 if (!comp.plugin.intact) return;
                 const bodies = Composite.allBodies(comp);
@@ -563,8 +756,8 @@
                 bodies.forEach(b => { cx += b.position.x; cy += b.position.y; });
                 cx /= bodies.length; cy /= bodies.length;
 
-                if (Math.hypot(mouse.position.x - cx, mouse.position.y - cy) < CONFIG.disruptRadius) {
-                    shatter(comp, mouse.position);
+                if (Math.hypot(point.x - cx, point.y - cy) < CONFIG.disruptRadius) {
+                    shatter(comp, point);
                 }
             });
         }
@@ -614,9 +807,12 @@
 
         // --- RENDERER ---
         function draw() {
-            ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg');
-            ctx.fillRect(0, 0, width, height);
-            
+            ctx.clearRect(0,0,width,height);
+            if(glitchIntensity > 0.1) {
+                ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg');
+                ctx.fillRect(0,0,width,height);
+            }
+
             let ox = 0, oy = 0;
             if(glitchIntensity > 0.1) {
                 ox = (Math.random()-0.5)*glitchIntensity;
@@ -631,18 +827,18 @@
             const architectBodies = Composite.allBodies(architectLayer);
             
             // Draw Architect Lines
-            ctx.beginPath();
             architectBodies.forEach(b => {
                 if (b.label === 'drawn-line') {
+                    ctx.beginPath();
+                    
                     if (b === hoveredEraseBody) {
                         ctx.strokeStyle = '#ff5555';
                         ctx.lineWidth = b.isSensor ? 1 : 2;
-                        
                         ctx.moveTo(b.vertices[0].x, b.vertices[0].y);
                         for(let j=1; j<b.vertices.length; j++) ctx.lineTo(b.vertices[j].x, b.vertices[j].y);
                         ctx.lineTo(b.vertices[0].x, b.vertices[0].y);
                         ctx.stroke();
-                        ctx.beginPath(); // reset for fill
+                        ctx.beginPath(); 
                     }
 
                     ctx.moveTo(b.vertices[0].x, b.vertices[0].y);
@@ -650,25 +846,23 @@
                         ctx.lineTo(b.vertices[j].x, b.vertices[j].y);
                     }
                     ctx.lineTo(b.vertices[0].x, b.vertices[0].y);
-                }
-            });
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
+                    
+                    ctx.fillStyle = b.render.fillStyle || '#ffffff';
+                    ctx.fill();
 
-            // Sketchy overlay
-            ctx.beginPath();
-            ctx.strokeStyle = "rgba(255,255,255,0.3)";
-            ctx.lineWidth = 1;
-            architectBodies.forEach(b => {
-                if (b.label === 'drawn-line') {
-                   const jitter = 0.5;
-                   ctx.moveTo(b.vertices[0].x + (Math.random()-0.5)*jitter, b.vertices[0].y + (Math.random()-0.5)*jitter);
-                   for(let j=1; j<b.vertices.length; j++) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = b.render.fillStyle || '#ffffff';
+                    ctx.globalAlpha = 0.4;
+                    ctx.lineWidth = 1;
+                    const jitter = 0.5;
+                    ctx.moveTo(b.vertices[0].x + (Math.random()-0.5)*jitter, b.vertices[0].y + (Math.random()-0.5)*jitter);
+                    for(let j=1; j<b.vertices.length; j++) {
                        ctx.lineTo(b.vertices[j].x + (Math.random()-0.5)*jitter, b.vertices[j].y + (Math.random()-0.5)*jitter);
-                   }
+                    }
+                    ctx.stroke();
+                    ctx.globalAlpha = 1.0;
                 }
             });
-            ctx.stroke();
 
             // Draw Words
             bodies.forEach(b => {
@@ -679,6 +873,12 @@
                     ctx.textAlign="center"; ctx.textBaseline="middle";
                     ctx.font = `${CONFIG.fontSize}px 'Courier New'`;
                     
+                    const isHebrew = /[\u0590-\u05FF]/.test(b.plugin.char);
+                    if (isHebrew && !b.plugin.isBroken) {
+                        ctx.shadowColor = CONFIG.colors.hebrew;
+                        ctx.shadowBlur = 10; 
+                    }
+
                     if (b.plugin.isBroken) {
                         ctx.fillStyle = CONFIG.colors.shard;
                         if(Math.random()>0.98) ctx.fillStyle='#fff'; 
@@ -686,6 +886,7 @@
                         ctx.fillStyle = b.isSleeping ? '#888' : b.plugin.color;
                     }
                     ctx.fillText(b.plugin.char, 0, 0);
+                    ctx.shadowBlur = 0;
                     ctx.restore();
                 }
             });
@@ -707,7 +908,6 @@
             // Draw Tool Overlays
             if (SETTINGS.interactionMode === 'draw' && currentDrawPoint) {
                 if (SETTINGS.architectTool === 'line' && isDrawing && startDrawPoint) {
-                    // Preview line
                     ctx.beginPath();
                     ctx.moveTo(startDrawPoint.x, startDrawPoint.y);
                     ctx.lineTo(currentDrawPoint.x, currentDrawPoint.y);
@@ -717,7 +917,6 @@
                     ctx.stroke();
                     ctx.setLineDash([]);
                 } else if (SETTINGS.architectTool === 'eraser') {
-                    // Eraser cursor
                     ctx.beginPath();
                     ctx.arc(currentDrawPoint.x, currentDrawPoint.y, 20, 0, Math.PI*2);
                     ctx.strokeStyle = hoveredEraseBody ? '#ff5555' : '#777';
@@ -761,6 +960,7 @@
             AudioEngine.toggle();
         });
 
+        // Mode Toggles
         const btnDrag = document.getElementById('btn-mode-drag');
         const btnShatter = document.getElementById('btn-mode-shatter');
         const btnDraw = document.getElementById('btn-mode-draw');
@@ -799,6 +999,62 @@
         btnToolErase.addEventListener('click', () => setArchitectTool('eraser'));
         document.body.classList.add('tool-free');
 
+        // Trigger Mode Toggles
+        const btnTrigClick = document.getElementById('btn-trigger-click');
+        const btnTrigHover = document.getElementById('btn-trigger-hover');
+
+        btnTrigClick.addEventListener('click', () => {
+            SETTINGS.triggerMode = 'click';
+            btnTrigClick.classList.add('active');
+            btnTrigHover.classList.remove('active');
+        });
+        btnTrigHover.addEventListener('click', () => {
+            SETTINGS.triggerMode = 'hover';
+            btnTrigHover.classList.add('active');
+            btnTrigClick.classList.remove('active');
+        });
+
+        // --- NEW SPAWN MODE TOGGLES ---
+        const btnSpawnAuto = document.getElementById('btn-spawn-auto');
+        const btnSpawnType = document.getElementById('btn-spawn-type');
+        const typingSettingsDiv = document.getElementById('typing-settings');
+        
+        btnSpawnAuto.addEventListener('click', () => {
+            SETTINGS.spawnMode = 'auto';
+            btnSpawnAuto.classList.add('active');
+            btnSpawnType.classList.remove('active');
+            typingSettingsDiv.style.display = 'none';
+        });
+
+        btnSpawnType.addEventListener('click', () => {
+            SETTINGS.spawnMode = 'typing';
+            btnSpawnType.classList.add('active');
+            btnSpawnAuto.classList.remove('active');
+            typingSettingsDiv.style.display = 'flex';
+            typingBuffer = "";
+            document.getElementById('typing-buffer-display').innerText = "";
+        });
+
+        const btnTypeChar = document.getElementById('btn-type-char');
+        const btnTypeEnter = document.getElementById('btn-type-enter');
+        const typeDesc = document.getElementById('type-desc');
+
+        btnTypeChar.addEventListener('click', () => {
+            SETTINGS.typingType = 'char';
+            btnTypeChar.classList.add('active');
+            btnTypeEnter.classList.remove('active');
+            typeDesc.innerText = "Press any key to drop a character.";
+            typingBuffer = "";
+            document.getElementById('typing-buffer-display').innerText = "";
+        });
+
+        btnTypeEnter.addEventListener('click', () => {
+            SETTINGS.typingType = 'enter';
+            btnTypeEnter.classList.add('active');
+            btnTypeChar.classList.remove('active');
+            typeDesc.innerText = "Type a word, then press ENTER to drop.";
+        });
+
         document.getElementById('btn-update-text').addEventListener('click', () => {
             const raw = document.getElementById('inp-text').value;
             if (raw.trim().length > 0) {
@@ -813,6 +1069,7 @@
             wordComposites = [];
             refillQueue();
             undoStack = [];
+            particles = [];
         });
         document.getElementById('inp-loop').addEventListener('change', (e) => SETTINGS.loop = e.target.checked);
 
@@ -829,9 +1086,14 @@
         // 2. SAVE LAYOUT
         document.getElementById('btn-save').addEventListener('click', () => {
             const lines = Composite.allBodies(architectLayer).map(b => {
-                // Calculate length based on top vertices distance
                 const len = Math.hypot(b.vertices[1].x - b.vertices[0].x, b.vertices[1].y - b.vertices[0].y);
-                return { x: b.position.x, y: b.position.y, angle: b.angle, length: len };
+                return { 
+                    x: b.position.x, 
+                    y: b.position.y, 
+                    angle: b.angle, 
+                    length: len,
+                    color: b.render.fillStyle || '#ffffff' 
+                };
             });
 
             localStorage.setItem('babel_architect_v1', JSON.stringify(lines));
@@ -856,12 +1118,44 @@
                     isStatic: true,
                     angle: lineData.angle,
                     friction: SETTINGS.lineFriction,
-                    render: { visible: true },
+                    render: { visible: true, fillStyle: lineData.color || '#ffffff' },
                     label: 'drawn-line'
                 });
                 Composite.add(architectLayer, body);
                 undoStack.push(body);
             });
+        });
+
+        // 4. VISUAL SETTINGS LISTENERS
+        const inpFontSize = document.getElementById('inp-fontsize');
+        inpFontSize.addEventListener('change', (e) => {
+            CONFIG.fontSize = parseInt(e.target.value);
+            CONFIG.letterSpacing = CONFIG.fontSize * 0.7; 
+            document.getElementById('val-fontsize').innerText = CONFIG.fontSize;
+            Composite.clear(world, false, true);
+            wordComposites = [];
+            refillQueue();
+        });
+        inpFontSize.addEventListener('input', (e) => {
+             document.getElementById('val-fontsize').innerText = e.target.value;
+        });
+
+        const colorBtns = document.querySelectorAll('#line-color-picker button');
+        colorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                colorBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentLineColor = btn.getAttribute('data-col');
+            });
+        });
+
+        document.getElementById('btn-load-bg').addEventListener('click', () => {
+            const url = document.getElementById('inp-bg-url').value;
+            if(url) document.getElementById('bg-reference').style.backgroundImage = `url('${url}')`;
+        });
+        document.getElementById('btn-clear-bg').addEventListener('click', () => {
+            document.getElementById('bg-reference').style.backgroundImage = '';
+            document.getElementById('inp-bg-url').value = '';
         });
 
         update();
