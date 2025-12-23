@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Fall of Babel: Architect Mode VII (Typist)</title>
+    <title>The Fall of Babel: Architect Mode VIII (Polyglot)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         :root {
@@ -194,116 +194,122 @@
         <div class="grain"></div>
         <div class="vignette"></div>
         <div id="audio-status">AUDIO ENGINE :: ONLINE</div>
-        <div id="tooltip">[SHIFT] Snap Axis • [CTRL+Z] Undo</div>
+        <div id="tooltip" data-key="tooltip">[SHIFT] Snap Axis • [CTRL+Z] Undo</div>
         <div id="typing-buffer-display"></div>
         <div id="settings-trigger">[ ☼ ]</div>
         
         <div id="control-panel">
             
             <div class="panel-header">
-                <h2>CURSOR MODE</h2>
+                <h2 data-key="h_lang">UI LANGUAGE</h2>
+                <div class="control-group mode-toggle-group" style="margin-bottom: 15px;">
+                    <button id="btn-lang-en" class="active">ENGLISH</button>
+                    <button id="btn-lang-zh">中文</button>
+                </div>
+
+                <h2 data-key="h_cursor">CURSOR MODE</h2>
                 <div class="control-group mode-toggle-group">
-                    <button id="btn-mode-drag">MANIPULATE</button>
-                    <button id="btn-mode-shatter" class="active">DISRUPT</button>
-                    <button id="btn-mode-draw">ARCHITECT</button>
+                    <button id="btn-mode-drag" data-key="btn_manipulate">MANIPULATE</button>
+                    <button id="btn-mode-shatter" class="active" data-key="btn_disrupt">DISRUPT</button>
+                    <button id="btn-mode-draw" data-key="btn_architect">ARCHITECT</button>
                 </div>
                 <div id="architect-controls" class="control-group">
-                    <div class="label-row" style="margin-bottom:5px;"><span>TOOL</span></div>
+                    <div class="label-row" style="margin-bottom:5px;"><span data-key="lbl_tool">TOOL</span></div>
                     <div class="mode-toggle-group">
-                        <button id="btn-tool-free" class="active">FREE</button>
-                        <button id="btn-tool-line">LINE</button>
-                        <button id="btn-tool-fan">FAN</button>
-                        <button id="btn-tool-erase">ERASE</button>
+                        <button id="btn-tool-free" class="active" data-key="btn_free">FREE</button>
+                        <button id="btn-tool-line" data-key="btn_line">LINE</button>
+                        <button id="btn-tool-fan" data-key="btn_fan">FAN</button>
+                        <button id="btn-tool-erase" data-key="btn_erase">ERASE</button>
                     </div>
                 </div>
             </div>
 
             <div class="tabs-nav">
-                <button class="tab-btn active" data-target="tab-sim">SIM</button>
-                <button class="tab-btn" data-target="tab-arch">ARCH</button>
-                <button class="tab-btn" data-target="tab-vis">VIS</button>
-                <button class="tab-btn" data-target="tab-data">DATA</button>
+                <button class="tab-btn active" data-target="tab-sim" data-key="tab_sim">SIM</button>
+                <button class="tab-btn" data-target="tab-arch" data-key="tab_arch">ARCH</button>
+                <button class="tab-btn" data-target="tab-vis" data-key="tab_vis">VIS</button>
+                <button class="tab-btn" data-target="tab-data" data-key="tab_data">DATA</button>
             </div>
 
             <div class="panel-content">
                 
                 <div id="tab-sim" class="tab-section active">
-                    <h2>SPAWN MODE</h2>
+                    <h2 data-key="h_spawn">SPAWN MODE</h2>
                     <div class="control-group mode-toggle-group">
-                        <button id="btn-spawn-auto" class="active">AUTO DROP</button>
-                        <button id="btn-spawn-type">TYPE INPUT</button>
+                        <button id="btn-spawn-auto" class="active" data-key="btn_auto_drop">AUTO DROP</button>
+                        <button id="btn-spawn-type" data-key="btn_type_input">TYPE INPUT</button>
                     </div>
                     
                     <div id="typing-settings" class="control-group" style="display:none; margin-top:5px; border-top:1px dashed #333; padding-top:10px;">
-                        <div class="label-row" style="margin-bottom:5px;"><span>INPUT METHOD</span></div>
+                        <div class="label-row" style="margin-bottom:5px;"><span data-key="lbl_input_method">INPUT METHOD</span></div>
                         <div class="mode-toggle-group">
-                            <button id="btn-type-char" class="active">1 KEY = 1 CHAR</button>
-                            <button id="btn-type-enter">DROP ON ENTER</button>
+                            <button id="btn-type-char" class="active" data-key="btn_1key">1 KEY = 1 CHAR</button>
+                            <button id="btn-type-enter" data-key="btn_enter">DROP ON ENTER</button>
                         </div>
                         <div style="font-size:9px; color:#666; margin-top:5px;">
-                            <span id="type-desc">Press any key to drop a character.</span>
+                            <span id="type-desc" data-key="desc_type_char">Press any key to drop a character.</span>
                         </div>
                     </div>
 
-                    <h2>INTERACTION TRIGGER</h2>
+                    <h2 data-key="h_interaction">INTERACTION TRIGGER</h2>
                     <div class="control-group mode-toggle-group">
-                        <button id="btn-trigger-click" class="active">CLICK</button>
-                        <button id="btn-trigger-hover">HOVER</button>
+                        <button id="btn-trigger-click" class="active" data-key="btn_click">CLICK</button>
+                        <button id="btn-trigger-hover" data-key="btn_hover">HOVER</button>
                     </div>
 
-                    <h2>PHYSICS</h2>
+                    <h2 data-key="h_physics">PHYSICS</h2>
                     <div class="control-group">
-                        <div class="label-row"><span>GRAVITY</span><span id="val-gravity">1.0</span></div>
+                        <div class="label-row"><span data-key="lbl_gravity">GRAVITY</span><span id="val-gravity">1.0</span></div>
                         <input type="range" id="inp-gravity" min="0" max="2" step="0.1" value="1">
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>FORCE</span><span id="val-force">0.12</span></div>
+                        <div class="label-row"><span data-key="lbl_force">FORCE</span><span id="val-force">0.12</span></div>
                         <input type="range" id="inp-force" min="0.01" max="0.5" step="0.01" value="0.12">
                     </div>
 
-                    <h2>FLOW (AUTO MODE)</h2>
+                    <h2 data-key="h_flow">FLOW (AUTO MODE)</h2>
                     <div class="control-group">
-                        <div class="label-row"><span>DELAY</span><span id="val-speed">35</span></div>
+                        <div class="label-row"><span data-key="lbl_delay">DELAY</span><span id="val-speed">35</span></div>
                         <input type="range" id="inp-speed" min="5" max="100" step="1" value="35">
                     </div>
                     <div class="control-group" style="flex-direction:row; justify-content:space-between; align-items:center;">
-                        <span style="font-size:10px; color:#888;">INFINITE LOOP</span>
+                        <span style="font-size:10px; color:#888;" data-key="lbl_infinite">INFINITE LOOP</span>
                         <input type="checkbox" id="inp-loop" checked style="width:auto; margin:0;">
                     </div>
 
-                    <h2>MAINTENANCE</h2>
-                    <button id="btn-sweep" style="color:#eebb99; border-color:#664422;">SWEEP DEBRIS</button>
-                    <button id="btn-clear" style="color:#ff6666; border-color:#663333;">PURGE ALL</button>
+                    <h2 data-key="h_maint">MAINTENANCE</h2>
+                    <button id="btn-sweep" style="color:#eebb99; border-color:#664422;" data-key="btn_sweep">SWEEP DEBRIS</button>
+                    <button id="btn-clear" style="color:#ff6666; border-color:#663333;" data-key="btn_purge">PURGE ALL</button>
                 </div>
 
                 <div id="tab-arch" class="tab-section">
-                    <h2>BLUEPRINT</h2>
+                    <h2 data-key="h_blueprint">BLUEPRINT</h2>
                     <div class="control-group" style="display:flex; flex-direction:row; gap:5px;">
-                        <button id="btn-save" style="flex:1;">SAVE LAYOUT</button>
-                        <button id="btn-load" style="flex:1;">LOAD LAYOUT</button>
+                        <button id="btn-save" style="flex:1;" data-key="btn_save">SAVE LAYOUT</button>
+                        <button id="btn-load" style="flex:1;" data-key="btn_load">LOAD LAYOUT</button>
                     </div>
 
-                    <h2>LINE TYPE</h2>
+                    <h2 data-key="h_linetype">LINE TYPE</h2>
                     <div class="control-group mode-toggle-group">
-                        <button id="btn-line-standard" class="active">STANDARD</button>
-                        <button id="btn-line-kill" style="color:#ff7777;">KILL ZONE</button>
-                        <button id="btn-line-bounce" style="color:#77aaff;">BOUNCE PAD</button>
+                        <button id="btn-line-standard" class="active" data-key="btn_standard">STANDARD</button>
+                        <button id="btn-line-kill" style="color:#ff7777;" data-key="btn_kill">KILL ZONE</button>
+                        <button id="btn-line-bounce" style="color:#77aaff;" data-key="btn_bounce">BOUNCE PAD</button>
                     </div>
-                    <div style="font-size:9px; color:#666;">Kill zones vaporize text; bounce pads add 1.5x restitution.</div>
+                    <div style="font-size:9px; color:#666;" data-key="desc_lines">Kill zones vaporize text; bounce pads add 1.5x restitution.</div>
 
-                    <h2>LINE PROPERTIES</h2>
+                    <h2 data-key="h_lineprop">LINE PROPERTIES</h2>
                     <div class="control-group">
-                        <div class="label-row"><span>FRICTION</span><span id="val-friction">0.1</span></div>
+                        <div class="label-row"><span data-key="lbl_friction">FRICTION</span><span id="val-friction">0.1</span></div>
                         <input type="range" id="inp-friction" min="0" max="1" step="0.05" value="0.1">
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>THICKNESS</span><span id="val-thickness">4</span></div>
+                        <div class="label-row"><span data-key="lbl_thickness">THICKNESS</span><span id="val-thickness">4</span></div>
                         <input type="range" id="inp-thickness" min="2" max="40" step="1" value="4">
                     </div>
 
-                    <h2>WIND</h2>
+                    <h2 data-key="h_wind">WIND</h2>
                     <div class="control-group">
-                        <div class="label-row"><span>FAN DIRECTION</span></div>
+                        <div class="label-row"><span data-key="lbl_fan_dir">FAN DIRECTION</span></div>
                         <div class="mode-toggle-group">
                             <button id="btn-fan-left">←</button>
                             <button id="btn-fan-up" class="active">↑</button>
@@ -312,21 +318,21 @@
                         </div>
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>FAN STRENGTH</span><span id="val-fan-strength">0.0006</span></div>
+                        <div class="label-row"><span data-key="lbl_fan_str">FAN STRENGTH</span><span id="val-fan-strength">0.0006</span></div>
                         <input type="range" id="inp-fan-strength" min="0" max="0.002" step="0.0001" value="0.0006">
                     </div>
                 </div>
 
                 <div id="tab-vis" class="tab-section">
-                    <h2>TYPOGRAPHY</h2>
+                    <h2 data-key="h_typo">TYPOGRAPHY</h2>
                     <div class="control-group">
-                        <div class="label-row"><span>TEXT SIZE (RESETS)</span><span id="val-fontsize">22</span></div>
+                        <div class="label-row"><span data-key="lbl_text_size">TEXT SIZE (RESETS)</span><span id="val-fontsize">22</span></div>
                         <input type="range" id="inp-fontsize" min="10" max="60" step="2" value="22">
                     </div>
 
-                    <h2>PALETTE</h2>
+                    <h2 data-key="h_palette">PALETTE</h2>
                     <div class="control-group">
-                        <div class="label-row"><span>LINE COLOR</span></div>
+                        <div class="label-row"><span data-key="lbl_line_col">LINE COLOR</span></div>
                         <div class="mode-toggle-group" id="line-color-picker">
                             <button data-col="#ffffff" style="background:#fff;" class="active"></button>
                             <button data-col="#eebb99" style="background:#eebb99;"></button>
@@ -335,47 +341,47 @@
                         </div>
                     </div>
 
-                    <h2>REFERENCE</h2>
+                    <h2 data-key="h_ref">REFERENCE</h2>
                     <div class="control-group">
-                        <div class="label-row"><span>IMAGE URL</span></div>
+                        <div class="label-row"><span data-key="lbl_img_url">IMAGE URL</span></div>
                         <textarea id="inp-bg-url" placeholder="Paste image URL..." style="height:30px;"></textarea>
                         <div class="mode-toggle-group">
-                            <button id="btn-load-bg">LOAD</button>
-                            <button id="btn-clear-bg">CLEAR</button>
+                            <button id="btn-load-bg" data-key="btn_load_img">LOAD</button>
+                            <button id="btn-clear-bg" data-key="btn_clear_img">CLEAR</button>
                         </div>
                     </div>
                 </div>
 
                 <div id="tab-data" class="tab-section">
-                    <h2>AUDIO</h2>
+                    <h2 data-key="h_audio">AUDIO</h2>
                     <div class="control-group">
-                        <button id="btn-audio-toggle">INITIALIZE AUDIO</button>
+                        <button id="btn-audio-toggle" data-key="btn_init_audio">INITIALIZE AUDIO</button>
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>MASTER VOLUME</span><span id="val-vol">0.35</span></div>
+                        <div class="label-row"><span data-key="lbl_vol_master">MASTER VOLUME</span><span id="val-vol">0.35</span></div>
                         <input type="range" id="inp-vol" min="0" max="1" step="0.05" value="0.35">
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>EXPLOSION</span><span id="val-vol-explosion">1.4</span></div>
+                        <div class="label-row"><span data-key="lbl_vol_exp">EXPLOSION</span><span id="val-vol-explosion">1.4</span></div>
                         <input type="range" id="inp-vol-explosion" min="0" max="2" step="0.05" value="1.4">
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>COLLISION</span><span id="val-vol-collision">0.1</span></div>
+                        <div class="label-row"><span data-key="lbl_vol_col">COLLISION</span><span id="val-vol-collision">0.1</span></div>
                         <input type="range" id="inp-vol-collision" min="0" max="2" step="0.05" value="0.1">
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>BOUNCE</span><span id="val-vol-bounce">1.0</span></div>
+                        <div class="label-row"><span data-key="lbl_vol_bounce">BOUNCE</span><span id="val-vol-bounce">1.0</span></div>
                         <input type="range" id="inp-vol-bounce" min="0" max="2" step="0.05" value="1">
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>TYPING</span><span id="val-vol-typing">1.0</span></div>
+                        <div class="label-row"><span data-key="lbl_vol_type">TYPING</span><span id="val-vol-typing">1.0</span></div>
                         <input type="range" id="inp-vol-typing" min="0" max="2" step="0.05" value="1">
                     </div>
 
-                    <h2>SOURCE TEXT</h2>
+                    <h2 data-key="h_source">SOURCE TEXT</h2>
                     <div class="control-group">
                         <textarea id="inp-text" placeholder="Paste custom text..."></textarea>
-                        <button id="btn-update-text">INJECT NEW STREAM</button>
+                        <button id="btn-update-text" data-key="btn_inject">INJECT NEW STREAM</button>
                     </div>
                 </div>
 
@@ -384,6 +390,152 @@
     </div>
 
     <script>
+        // --- TRANSLATION DATA ---
+        const TRANSLATIONS = {
+            en: {
+                tooltip: "[SHIFT] Snap Axis • [CTRL+Z] Undo",
+                h_lang: "UI LANGUAGE",
+                h_cursor: "CURSOR MODE",
+                btn_manipulate: "MANIPULATE",
+                btn_disrupt: "DISRUPT",
+                btn_architect: "ARCHITECT",
+                lbl_tool: "TOOL",
+                btn_free: "FREE",
+                btn_line: "LINE",
+                btn_fan: "FAN",
+                btn_erase: "ERASE",
+                tab_sim: "SIM",
+                tab_arch: "ARCH",
+                tab_vis: "VIS",
+                tab_data: "DATA",
+                h_spawn: "SPAWN MODE",
+                btn_auto_drop: "AUTO DROP",
+                btn_type_input: "TYPE INPUT",
+                lbl_input_method: "INPUT METHOD",
+                btn_1key: "1 KEY = 1 CHAR",
+                btn_enter: "DROP ON ENTER",
+                desc_type_char: "Press any key to drop a character.",
+                desc_type_enter: "Type a word, then press ENTER to drop.",
+                h_interaction: "INTERACTION TRIGGER",
+                btn_click: "CLICK",
+                btn_hover: "HOVER",
+                h_physics: "PHYSICS",
+                lbl_gravity: "GRAVITY",
+                lbl_force: "FORCE",
+                h_flow: "FLOW (AUTO MODE)",
+                lbl_delay: "DELAY",
+                lbl_infinite: "INFINITE LOOP",
+                h_maint: "MAINTENANCE",
+                btn_sweep: "SWEEP DEBRIS",
+                btn_purge: "PURGE ALL",
+                h_blueprint: "BLUEPRINT",
+                btn_save: "SAVE LAYOUT",
+                btn_load: "LOAD LAYOUT",
+                btn_saved: "SAVED!",
+                h_linetype: "LINE TYPE",
+                btn_standard: "STANDARD",
+                btn_kill: "KILL ZONE",
+                btn_bounce: "BOUNCE PAD",
+                desc_lines: "Kill zones vaporize text; bounce pads add 1.5x restitution.",
+                h_lineprop: "LINE PROPERTIES",
+                lbl_friction: "FRICTION",
+                lbl_thickness: "THICKNESS",
+                h_wind: "WIND",
+                lbl_fan_dir: "FAN DIRECTION",
+                lbl_fan_str: "FAN STRENGTH",
+                h_typo: "TYPOGRAPHY",
+                lbl_text_size: "TEXT SIZE (RESETS)",
+                h_palette: "PALETTE",
+                lbl_line_col: "LINE COLOR",
+                h_ref: "REFERENCE",
+                lbl_img_url: "IMAGE URL",
+                btn_load_img: "LOAD",
+                btn_clear_img: "CLEAR",
+                h_audio: "AUDIO",
+                btn_init_audio: "INITIALIZE AUDIO",
+                btn_audio_active: "AUDIO :: ACTIVE",
+                btn_audio_sus: "AUDIO :: SUSPENDED",
+                lbl_vol_master: "MASTER VOLUME",
+                lbl_vol_exp: "EXPLOSION",
+                lbl_vol_col: "COLLISION",
+                lbl_vol_bounce: "BOUNCE",
+                lbl_vol_type: "TYPING",
+                h_source: "SOURCE TEXT",
+                btn_inject: "INJECT NEW STREAM"
+            },
+            zh: {
+                tooltip: "[SHIFT] 轴锁定 • [CTRL+Z] 撤销",
+                h_lang: "界面语言",
+                h_cursor: "光标模式",
+                btn_manipulate: "操控",
+                btn_disrupt: "粉碎",
+                btn_architect: "建造",
+                lbl_tool: "工具",
+                btn_free: "手绘",
+                btn_line: "直线",
+                btn_fan: "风扇",
+                btn_erase: "擦除",
+                tab_sim: "模拟",
+                tab_arch: "建造",
+                tab_vis: "视觉",
+                tab_data: "数据",
+                h_spawn: "生成模式",
+                btn_auto_drop: "自动掉落",
+                btn_type_input: "键盘输入",
+                lbl_input_method: "输入方式",
+                btn_1key: "单键单字",
+                btn_enter: "回车掉落",
+                desc_type_char: "按任意键掉落字符。",
+                desc_type_enter: "输入单词，按回车键掉落。",
+                h_interaction: "触发方式",
+                btn_click: "点击",
+                btn_hover: "悬停",
+                h_physics: "物理参数",
+                lbl_gravity: "重力",
+                lbl_force: "爆破力",
+                h_flow: "自动流控",
+                lbl_delay: "间隔延迟",
+                lbl_infinite: "无限循环",
+                h_maint: "维护",
+                btn_sweep: "清理碎片",
+                btn_purge: "清空所有",
+                h_blueprint: "蓝图",
+                btn_save: "保存布局",
+                btn_load: "加载布局",
+                btn_saved: "已保存!",
+                h_linetype: "线条类型",
+                btn_standard: "标准",
+                btn_kill: "销毁区",
+                btn_bounce: "弹力板",
+                desc_lines: "销毁区气化文本；弹力板增加1.5倍弹性。",
+                h_lineprop: "线条属性",
+                lbl_friction: "摩擦力",
+                lbl_thickness: "厚度",
+                h_wind: "风力系统",
+                lbl_fan_dir: "风向",
+                lbl_fan_str: "风力强度",
+                h_typo: "排版",
+                lbl_text_size: "文字大小 (重置)",
+                h_palette: "调色板",
+                lbl_line_col: "线条颜色",
+                h_ref: "参考图",
+                lbl_img_url: "图片链接",
+                btn_load_img: "加载",
+                btn_clear_img: "清除",
+                h_audio: "音频",
+                btn_init_audio: "初始化音频",
+                btn_audio_active: "音频 :: 运行中",
+                btn_audio_sus: "音频 :: 已挂起",
+                lbl_vol_master: "主音量",
+                lbl_vol_exp: "爆炸音量",
+                lbl_vol_col: "碰撞音量",
+                lbl_vol_bounce: "反弹音量",
+                lbl_vol_type: "打字音量",
+                h_source: "文本源",
+                btn_inject: "注入新文本流"
+            }
+        };
+
         // --- TAB SYSTEM LOGIC ---
         const tabBtns = document.querySelectorAll('.tab-btn');
         const tabSections = document.querySelectorAll('.tab-section');
@@ -461,8 +613,14 @@
             }
             updateUI(active) {
                 const btn = document.getElementById('btn-audio-toggle');
-                if (active) { btn.innerText = "AUDIO :: ACTIVE"; btn.classList.add('active'); } 
-                else { btn.innerText = "AUDIO :: SUSPENDED"; btn.classList.remove('active'); }
+                const t = TRANSLATIONS[SETTINGS.language];
+                if (active) { 
+                    btn.innerText = t.btn_audio_active; 
+                    btn.classList.add('active'); 
+                } else { 
+                    btn.innerText = t.btn_audio_sus; 
+                    btn.classList.remove('active'); 
+                }
             }
             setVolume(val) { 
                 this.volumes.master = val;
@@ -612,9 +770,10 @@
             loop: true,
             interactionMode: 'shatter', 
             architectTool: 'freehand', 
-            triggerMode: 'hover', // 'click' or 'hover'
-            spawnMode: 'auto', // 'auto' or 'typing'
-            typingType: 'char', // 'char' or 'enter'
+            triggerMode: 'hover', 
+            spawnMode: 'auto', 
+            typingType: 'char', 
+            language: 'en', // 'en' or 'zh'
             textSource: [],
             lineFriction: 0.1,
             lineThickness: 4,
@@ -1553,7 +1712,7 @@
             SETTINGS.typingType = 'char';
             btnTypeChar.classList.add('active');
             btnTypeEnter.classList.remove('active');
-            typeDesc.innerText = "Press any key to drop a character.";
+            typeDesc.innerText = TRANSLATIONS[SETTINGS.language].desc_type_char;
             typingBuffer = "";
             document.getElementById('typing-buffer-display').innerText = "";
         });
@@ -1562,7 +1721,7 @@
             SETTINGS.typingType = 'enter';
             btnTypeEnter.classList.add('active');
             btnTypeChar.classList.remove('active');
-            typeDesc.innerText = "Type a word, then press ENTER to drop.";
+            typeDesc.innerText = TRANSLATIONS[SETTINGS.language].desc_type_enter;
         });
 
         document.getElementById('btn-update-text').addEventListener('click', () => {
@@ -1629,7 +1788,7 @@
             
             const btn = document.getElementById('btn-save');
             const original = btn.innerText;
-            btn.innerText = "SAVED!";
+            btn.innerText = TRANSLATIONS[SETTINGS.language].btn_saved;
             setTimeout(() => btn.innerText = original, 1000);
         });
 
@@ -1691,7 +1850,7 @@
             refillQueue();
         });
         inpFontSize.addEventListener('input', (e) => {
-             document.getElementById('val-fontcurrentsize').innerText = e.target.value;
+             document.getElementById('val-fontsize').innerText = e.target.value;
         });
 
         const colorBtns = document.querySelectorAll('#line-color-picker button');
@@ -1712,6 +1871,34 @@
             document.getElementById('bg-reference').style.backgroundImage = '';
             document.getElementById('inp-bg-url').value = '';
         });
+
+        // --- LANGUAGE SWITCHING ---
+        function setLanguage(lang) {
+            SETTINGS.language = lang;
+            const t = TRANSLATIONS[lang];
+            
+            // Update all elements with data-key attribute
+            document.querySelectorAll('[data-key]').forEach(el => {
+                const key = el.dataset.key;
+                if(t[key]) el.innerText = t[key];
+            });
+
+            // Update Audio Button State explicitly (dynamic text)
+            audioEngine.updateUI(audioEngine.ctx && audioEngine.ctx.state === 'running');
+            
+            // Update dynamic description text if needed
+            if (SETTINGS.spawnMode === 'typing') {
+                const descKey = SETTINGS.typingType === 'char' ? 'desc_type_char' : 'desc_type_enter';
+                document.getElementById('type-desc').innerText = t[descKey];
+            }
+
+            // Toggle active buttons
+            document.getElementById('btn-lang-en').classList.toggle('active', lang === 'en');
+            document.getElementById('btn-lang-zh').classList.toggle('active', lang === 'zh');
+        }
+
+        document.getElementById('btn-lang-en').addEventListener('click', () => setLanguage('en'));
+        document.getElementById('btn-lang-zh').addEventListener('click', () => setLanguage('zh'));
 
         setLineType(SETTINGS.lineType);
         setFanDirection(SETTINGS.fanDirection);
