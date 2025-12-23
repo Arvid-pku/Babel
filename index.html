@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Fall of Babel: Architect Mode VIII (Polyglot)</title>
+    <title>The Fall of Babel: Architect Mode IX (Entropy)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         :root {
@@ -277,6 +277,15 @@
                         <input type="checkbox" id="inp-loop" checked style="width:auto; margin:0;">
                     </div>
 
+                    <h2 data-key="h_lifetime">LIFETIME</h2>
+                    <div class="control-group">
+                        <div class="label-row">
+                            <span data-key="lbl_max_life">MAX EXISTENCE</span>
+                            <span id="val-lifetime" style="color:var(--accent)">∞</span>
+                        </div>
+                        <input type="range" id="inp-lifetime" min="1" max="61" step="1" value="61">
+                    </div>
+
                     <h2 data-key="h_maint">MAINTENANCE</h2>
                     <button id="btn-sweep" style="color:#eebb99; border-color:#664422;" data-key="btn_sweep">SWEEP DEBRIS</button>
                     <button id="btn-clear" style="color:#ff6666; border-color:#663333;" data-key="btn_purge">PURGE ALL</button>
@@ -425,6 +434,8 @@
                 h_flow: "FLOW (AUTO MODE)",
                 lbl_delay: "DELAY",
                 lbl_infinite: "INFINITE LOOP",
+                h_lifetime: "LIFETIME",
+                lbl_max_life: "MAX EXISTENCE",
                 h_maint: "MAINTENANCE",
                 btn_sweep: "SWEEP DEBRIS",
                 btn_purge: "PURGE ALL",
@@ -496,6 +507,8 @@
                 h_flow: "自动流控",
                 lbl_delay: "间隔延迟",
                 lbl_infinite: "无限循环",
+                h_lifetime: "生命周期",
+                lbl_max_life: "存在时间",
                 h_maint: "维护",
                 btn_sweep: "清理碎片",
                 btn_purge: "清空所有",
@@ -780,7 +793,8 @@
             lineType: 'standard',
             fanStrength: 0.0006,
             fanRadius: 180,
-            fanDirection: { x: 0, y: -1 }
+            fanDirection: { x: 0, y: -1 },
+            lifetime: 61 // 61 = Infinity
         };
 
         let typingBuffer = "";
@@ -832,6 +846,7 @@
                 const chars = Array.from(text);
                 const massScale = options.massScale || 1;
                 const sizeScale = options.sizeScale || 1;
+                const now = Date.now();
                 
                 for (let i = 0; i < chars.length; i++) {
                     const ch = chars[i];
@@ -848,7 +863,8 @@
                         plugin: { 
                             char: ch, isBroken: false, 
                             color: isHeb ? this.config.colors.hebrew : this.config.colors.english,
-                            size: height
+                            size: height,
+                            birthTime: now
                         }
                     });
                     letterBodies.push(body);
@@ -864,7 +880,7 @@
                 const composite = Composite.create({ label: 'word' });
                 Composite.add(composite, letterBodies);
                 Composite.add(composite, constraints);
-                composite.plugin = { intact: true, text };
+                composite.plugin = { intact: true, text, birthTime: now };
                 letterBodies.forEach(b => { b.plugin.wordComposite = composite; });
                 return composite;
             }
@@ -1353,18 +1369,39 @@
         }
 
         function garbageCollect() {
-            if (frameCount % 60 !== 0) return; 
+            // Standard off-screen removal
+            if (frameCount % 60 === 0) {
+                const all = Composite.allBodies(world);
+                const toRemove = [];
+                const now = Date.now();
+                const lifeLimit = SETTINGS.lifetime < 61 ? SETTINGS.lifetime * 1000 : Infinity;
 
-            const all = Composite.allBodies(world);
-            const toRemove = [];
-            for (let i = 0; i < all.length; i++) {
-                if (all[i].position.y > height + 200) toRemove.push(all[i]);
-            }
-            Composite.remove(world, toRemove);
-            const textBodies = all.filter(b => b.plugin && b.plugin.char);
-            if (textBodies.length > CONFIG.maxBodies) {
-                const excess = textBodies.slice(0, textBodies.length - CONFIG.maxBodies);
-                Composite.remove(world, excess);
+                for (let i = 0; i < all.length; i++) {
+                    const b = all[i];
+                    
+                    // Remove if far below screen
+                    if (b.position.y > height + 200) {
+                        toRemove.push(b);
+                        continue;
+                    }
+
+                    // Remove if lifetime exceeded
+                    if (b.plugin && b.plugin.birthTime) {
+                        const age = now - b.plugin.birthTime;
+                        if (age > lifeLimit) {
+                            toRemove.push(b);
+                        }
+                    }
+                }
+                
+                if (toRemove.length > 0) Composite.remove(world, toRemove);
+
+                // Count cap check
+                const textBodies = Composite.allBodies(world).filter(b => b.plugin && b.plugin.char);
+                if (textBodies.length > CONFIG.maxBodies) {
+                    const excess = textBodies.slice(0, textBodies.length - CONFIG.maxBodies);
+                    Composite.remove(world, excess);
+                }
             }
         }
 
@@ -1388,6 +1425,8 @@
 
             const bodies = Composite.allBodies(world);
             const architectBodies = Composite.allBodies(architectLayer);
+            const now = Date.now();
+            const lifeLimit = SETTINGS.lifetime < 61 ? SETTINGS.lifetime * 1000 : Infinity;
             
             // Draw Architect Lines
             architectBodies.forEach(b => {
@@ -1449,6 +1488,18 @@
             bodies.forEach(b => {
                 if (b.plugin && b.plugin.char) {
                     ctx.save();
+                    
+                    // Fade out logic if close to death
+                    let alpha = 1.0;
+                    if (lifeLimit !== Infinity && b.plugin.birthTime) {
+                        const age = now - b.plugin.birthTime;
+                        const remaining = lifeLimit - age;
+                        if (remaining < 1000) { // fade out in last 1 second
+                            alpha = Math.max(0, remaining / 1000);
+                        }
+                    }
+                    ctx.globalAlpha = alpha;
+
                     ctx.translate(b.position.x, b.position.y);
                     ctx.rotate(b.angle);
                     ctx.textAlign="center"; ctx.textBaseline="middle";
@@ -1522,9 +1573,21 @@
         bindSlider('inp-gravity', 'gravity', 'val-gravity');
         bindSlider('inp-force', 'force', 'val-force');
         bindSlider('inp-speed', 'spawnInterval', 'val-speed');
-        
         bindSlider('inp-friction', 'lineFriction', 'val-friction');
         bindSlider('inp-thickness', 'lineThickness', 'val-thickness');
+
+        // Custom Logic for Lifetime Slider
+        const lifetimeSlider = document.getElementById('inp-lifetime');
+        const lifetimeVal = document.getElementById('val-lifetime');
+        lifetimeSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            SETTINGS.lifetime = val;
+            if (val === 61) {
+                lifetimeVal.innerText = "∞";
+            } else {
+                lifetimeVal.innerText = val + "s";
+            }
+        });
 
         const btnLineStandard = document.getElementById('btn-line-standard');
         const btnLineKill = document.getElementById('btn-line-kill');
@@ -1890,6 +1953,14 @@
             if (SETTINGS.spawnMode === 'typing') {
                 const descKey = SETTINGS.typingType === 'char' ? 'desc_type_char' : 'desc_type_enter';
                 document.getElementById('type-desc').innerText = t[descKey];
+            }
+
+            // Update Lifetime Slider Text
+            const lifetimeVal = document.getElementById('val-lifetime');
+            if (SETTINGS.lifetime === 61) {
+                lifetimeVal.innerText = "∞";
+            } else {
+                lifetimeVal.innerText = SETTINGS.lifetime + "s";
             }
 
             // Toggle active buttons
