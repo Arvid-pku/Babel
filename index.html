@@ -564,7 +564,15 @@
         });
 
         class Particle {
-            constructor(x, y) {
+            constructor() {
+                this.active = false;
+                this.x = 0; this.y = 0;
+                this.vx = 0; this.vy = 0;
+                this.life = 0;
+                this.size = 1;
+            }
+            reset(x, y) {
+                this.active = true;
                 this.x = x; this.y = y;
                 this.vx = (Math.random()-0.5)*10;
                 this.vy = (Math.random()-0.5)*10;
@@ -572,11 +580,17 @@
                 this.size = Math.random()*2+1;
             }
             update() {
+                if (!this.active) return false;
                 this.life -= 0.03;
                 this.x += this.vx; this.y += this.vy;
-                return this.life > 0;
+                if (this.life <= 0) {
+                    this.active = false;
+                    return false;
+                }
+                return true;
             }
             draw(ctx, color) {
+                if (!this.active) return;
                 ctx.fillStyle = color;
                 ctx.globalAlpha = this.life;
                 ctx.fillRect(this.x, this.y, this.size, this.size);
@@ -895,13 +909,19 @@
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         document.body.appendChild(canvas);
+
+        const staticCanvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(1, 1) : document.createElement('canvas');
+        let staticCtx = staticCanvas.getContext('2d');
+        let staticDirty = true;
         
         engine.positionIterations = 8;
         engine.velocityIterations = 6;
 
         let width, height;
         let wordComposites = [];
-        let particles = [];
+        const PARTICLE_POOL_SIZE = 1000;
+        const particles = Array.from({ length: PARTICLE_POOL_SIZE }, () => new Particle());
+        let particleCursor = 0;
         let fanFields = [];
         let glitchIntensity = 0;
         let wordQueue = [];
@@ -920,7 +940,16 @@
             canvas.height = height * dpr;
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.scale(dpr, dpr);
+
+            if (staticCtx) {
+                staticCanvas.width = width * dpr;
+                staticCanvas.height = height * dpr;
+                staticCtx.setTransform(1, 0, 0, 1, 0, 0);
+                staticCtx.scale(dpr, dpr);
+                staticDirty = true;
+            }
 
             if (walls.length > 0) Composite.remove(world, walls);
             const floor = Bodies.rectangle(width / 2, height + 100, width * 2, 200, { isStatic: true });
@@ -1145,6 +1174,35 @@
         canvas.addEventListener('touchend', (e) => { if (e.cancelable) e.preventDefault(); handlePointerUp(e); }, touchOpts);
         canvas.addEventListener('touchcancel', (e) => { if (e.cancelable) e.preventDefault(); activeState?.onMouseLeave?.(); }, touchOpts);
 
+        function markStaticDirty() {
+            staticDirty = true;
+        }
+
+        function getAvailableParticle() {
+            for (let i = 0; i < particles.length; i++) {
+                const idx = (particleCursor + i) % particles.length;
+                const candidate = particles[idx];
+                if (!candidate.active) {
+                    particleCursor = (idx + 1) % particles.length;
+                    return candidate;
+                }
+            }
+            return null;
+        }
+
+        function emitParticles(x, y, count = 1) {
+            for (let i = 0; i < count; i++) {
+                const p = getAvailableParticle();
+                if (!p) return;
+                p.reset(x, y);
+            }
+        }
+
+        function resetParticles() {
+            particles.forEach(p => p.active = false);
+            particleCursor = 0;
+        }
+
         function removeArchitectBody(body) {
             Composite.remove(architectLayer, body);
             const idx = undoStack.indexOf(body);
@@ -1152,6 +1210,7 @@
             if (body.label === 'fan-field') {
                 fanFields = fanFields.filter(f => f.body !== body);
             }
+            markStaticDirty();
         }
 
         function findEraseTarget(pt) {
@@ -1193,6 +1252,7 @@
                 dir: { ...dir },
                 strength: SETTINGS.fanStrength
             });
+            markStaticDirty();
         }
 
         function createLineSegment(p1, p2, dist) {
@@ -1212,6 +1272,7 @@
             });
             Composite.add(architectLayer, body);
             undoStack.push(body); 
+            markStaticDirty();
         }
 
         function createStraightLine(p1, p2) {
@@ -1341,7 +1402,7 @@
                 Body.applyForce(b, b.position, { x: (fx/len)*forceMag, y: (fy/len)*forceMag });
                 Body.setAngularVelocity(b, (Math.random()-0.5)*0.3);
                 
-                for(let i=0; i<3; i++) particles.push(new Particle(b.position.x, b.position.y));
+                emitParticles(b.position.x, b.position.y, 3);
             });
             glitchIntensity = 5;
         }
@@ -1413,6 +1474,116 @@
             }
         }
 
+        function renderStaticLayer() {
+            if (!staticCtx || !staticDirty) return;
+            staticDirty = false;
+
+            staticCtx.setTransform(1, 0, 0, 1, 0, 0);
+            staticCtx.clearRect(0, 0, width * dpr, height * dpr);
+            staticCtx.scale(dpr, dpr);
+
+            // Static grid once to avoid per-frame draw cost
+            staticCtx.save();
+            staticCtx.strokeStyle = '#111';
+            staticCtx.globalAlpha = 0.25;
+            const step = 60;
+            for (let x = (width % step); x < width; x += step) {
+                staticCtx.beginPath();
+                staticCtx.moveTo(x, 0);
+                staticCtx.lineTo(x, height);
+                staticCtx.stroke();
+            }
+            for (let y = (height % step); y < height; y += step) {
+                staticCtx.beginPath();
+                staticCtx.moveTo(0, y);
+                staticCtx.lineTo(width, y);
+                staticCtx.stroke();
+            }
+            staticCtx.restore();
+
+            const architectBodies = Composite.allBodies(architectLayer);
+            architectBodies.forEach(b => {
+                if (b.label === 'fan-field') {
+                    const fan = fanFields.find(f => f.body === b);
+                    const dir = fan?.dir || b.plugin?.dir || { x: 0, y: -1 };
+                    const radius = fan?.radius || SETTINGS.fanRadius;
+                    staticCtx.save();
+                    staticCtx.translate(b.position.x, b.position.y);
+                    staticCtx.strokeStyle = '#77aaff';
+                    staticCtx.lineWidth = 1;
+                    staticCtx.globalAlpha = 0.2;
+                    staticCtx.beginPath();
+                    staticCtx.arc(0, 0, radius, 0, Math.PI*2);
+                    staticCtx.stroke();
+                    staticCtx.globalAlpha = 1;
+                    staticCtx.beginPath();
+                    staticCtx.arc(0, 0, 12, 0, Math.PI*2);
+                    staticCtx.fillStyle = '#0f1f3a';
+                    staticCtx.fill();
+                    staticCtx.stroke();
+                    staticCtx.rotate(Math.atan2(dir.y, dir.x));
+                    staticCtx.fillStyle = '#77aaff';
+                    staticCtx.beginPath();
+                    staticCtx.moveTo(-6, 4);
+                    staticCtx.lineTo(6, 0);
+                    staticCtx.lineTo(-6, -4);
+                    staticCtx.closePath();
+                    staticCtx.fill();
+                    staticCtx.restore();
+                    return;
+                }
+
+                if (b.label === 'drawn-line' || b.label === 'kill-line' || b.label === 'bounce-line') {
+                    staticCtx.beginPath();
+                    staticCtx.moveTo(b.vertices[0].x, b.vertices[0].y);
+                    for(let j=1; j<b.vertices.length; j++) {
+                        staticCtx.lineTo(b.vertices[j].x, b.vertices[j].y);
+                    }
+                    staticCtx.lineTo(b.vertices[0].x, b.vertices[0].y);
+                    
+                    staticCtx.fillStyle = b.render.fillStyle || '#ffffff';
+                    staticCtx.globalAlpha = b.label === 'kill-line' ? 0.7 : 1;
+                    staticCtx.fill();
+
+                    staticCtx.beginPath();
+                    staticCtx.strokeStyle = b.render.fillStyle || '#ffffff';
+                    staticCtx.globalAlpha = 0.6;
+                    staticCtx.lineWidth = 1;
+                    staticCtx.moveTo(b.vertices[0].x, b.vertices[0].y);
+                    for(let j=1; j<b.vertices.length; j++) staticCtx.lineTo(b.vertices[j].x, b.vertices[j].y);
+                    staticCtx.stroke();
+                    staticCtx.globalAlpha = 1.0;
+                }
+            });
+        }
+
+        function drawHoveredArchitect(ctx) {
+            const body = drawState.hoveredEraseBody;
+            if (!body) return;
+            ctx.save();
+            ctx.strokeStyle = '#ff5555';
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.8;
+            if (body.label === 'fan-field') {
+                const fan = fanFields.find(f => f.body === body);
+                const radius = fan?.radius || SETTINGS.fanRadius;
+                ctx.beginPath();
+                ctx.arc(body.position.x, body.position.y, radius, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(body.position.x, body.position.y, 12, 0, Math.PI*2);
+                ctx.stroke();
+            } else {
+                const verts = body.vertices;
+                ctx.beginPath();
+                ctx.moveTo(verts[0].x, verts[0].y);
+                for (let j = 1; j < verts.length; j++) ctx.lineTo(verts[j].x, verts[j].y);
+                ctx.closePath();
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
         // --- RENDERER ---
         function draw() {
             ctx.clearRect(0,0,width,height);
@@ -1431,66 +1602,13 @@
             ctx.save();
             ctx.translate(ox, oy);
 
+            renderStaticLayer();
+            if (staticCtx) ctx.drawImage(staticCanvas, 0, 0, width, height);
+            drawHoveredArchitect(ctx);
+
             const bodies = Composite.allBodies(world);
-            const architectBodies = Composite.allBodies(architectLayer);
             const now = Date.now();
             const lifeLimit = SETTINGS.lifetime < 61 ? SETTINGS.lifetime * 1000 : Infinity;
-            
-            // Draw Architect Lines
-            architectBodies.forEach(b => {
-                if (b.label === 'fan-field') {
-                    const fan = fanFields.find(f => f.body === b);
-                    const dir = b.plugin?.dir || { x: 0, y: -1 };
-                    ctx.save();
-                    ctx.translate(b.position.x, b.position.y);
-                    ctx.strokeStyle = '#77aaff';
-                    ctx.lineWidth = 1;
-                    ctx.globalAlpha = 0.2;
-                    if (fan) {
-                        ctx.beginPath();
-                        ctx.arc(0, 0, fan.radius, 0, Math.PI*2);
-                        ctx.stroke();
-                    }
-                    ctx.globalAlpha = 1;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, 12, 0, Math.PI*2);
-                    ctx.fillStyle = '#0f1f3a';
-                    ctx.fill();
-                    ctx.stroke();
-                    ctx.rotate(Math.atan2(dir.y, dir.x));
-                    ctx.fillStyle = '#77aaff';
-                    ctx.beginPath();
-                    ctx.moveTo(-6, 4);
-                    ctx.lineTo(6, 0);
-                    ctx.lineTo(-6, -4);
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.restore();
-                    return;
-                }
-
-                if (b.label === 'drawn-line' || b.label === 'kill-line' || b.label === 'bounce-line') {
-                    ctx.beginPath();
-                    ctx.moveTo(b.vertices[0].x, b.vertices[0].y);
-                    for(let j=1; j<b.vertices.length; j++) {
-                        ctx.lineTo(b.vertices[j].x, b.vertices[j].y);
-                    }
-                    ctx.lineTo(b.vertices[0].x, b.vertices[0].y);
-                    
-                    ctx.fillStyle = b.render.fillStyle || '#ffffff';
-                    ctx.globalAlpha = b.label === 'kill-line' ? 0.7 : 1;
-                    ctx.fill();
-
-                    ctx.beginPath();
-                    ctx.strokeStyle = drawState.hoveredEraseBody === b ? '#ff5555' : (b.render.fillStyle || '#ffffff');
-                    ctx.globalAlpha = 0.6;
-                    ctx.lineWidth = drawState.hoveredEraseBody === b ? 2 : 1;
-                    ctx.moveTo(b.vertices[0].x, b.vertices[0].y);
-                    for(let j=1; j<b.vertices.length; j++) ctx.lineTo(b.vertices[j].x, b.vertices[j].y);
-                    ctx.stroke();
-                    ctx.globalAlpha = 1.0;
-                }
-            });
 
             // Draw Words
             bodies.forEach(b => {
@@ -1532,10 +1650,11 @@
             });
             
             // Draw Particles
-            for(let i=particles.length-1; i>=0; i--) {
-                let p = particles[i];
-                if(!p.update()) particles.splice(i,1);
-                else p.draw(ctx, CONFIG.colors.dust);
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                if (!p.active) continue;
+                if (!p.update()) continue;
+                p.draw(ctx, CONFIG.colors.dust);
             }
             ctx.globalAlpha = 1;
 
@@ -1812,8 +1931,9 @@
             wordComposites = [];
             refillQueue();
             undoStack = [];
-            particles = [];
             fanFields = [];
+            resetParticles();
+            markStaticDirty();
         });
         document.getElementById('inp-loop').addEventListener('change', (e) => SETTINGS.loop = e.target.checked);
 
@@ -1824,7 +1944,7 @@
             const all = Composite.allBodies(world);
             const debris = all.filter(b => b.plugin && b.plugin.isBroken);
             Composite.remove(world, debris);
-            particles = []; 
+            resetParticles();
         });
 
         // 2. SAVE LAYOUT
@@ -1871,6 +1991,7 @@
             Composite.clear(architectLayer, false, true);
             undoStack = [];
             fanFields = [];
+            markStaticDirty();
 
             const data = JSON.parse(raw);
             data.forEach(item => {
@@ -1908,6 +2029,7 @@
                 Composite.add(architectLayer, body);
                 undoStack.push(body);
             });
+            markStaticDirty();
         });
 
         // 4. VISUAL SETTINGS LISTENERS
