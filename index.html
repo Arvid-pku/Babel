@@ -39,7 +39,7 @@
                         <button id="btn-tool-free" class="active" data-key="btn_free">FREE</button>
                         <button id="btn-tool-line" data-key="btn_line">LINE</button>
                         <button id="btn-tool-fan" data-key="btn_fan">FAN</button>
-                        <button id="btn-tool-well">WELL</button>
+                        <button id="btn-tool-well" data-key="btn_well">WELL</button>
                         <button id="btn-tool-erase" data-key="btn_erase">ERASE</button>
                     </div>
                 </div>
@@ -161,13 +161,13 @@
                         <input type="range" id="inp-fan-strength" min="0" max="0.002" step="0.0001" value="0.0006">
                     </div>
 
-                    <h2>GRAVITY WELL</h2>
+                    <h2 data-key="h_well">GRAVITY WELL</h2>
                     <div class="control-group">
-                        <div class="label-row"><span>STRENGTH</span><span id="val-well-strength">0.0009</span></div>
+                        <div class="label-row"><span data-key="lbl_well_str">STRENGTH</span><span id="val-well-strength">0.0009</span></div>
                         <input type="range" id="inp-well-strength" min="0" max="0.004" step="0.0001" value="0.0009">
                     </div>
                     <div class="control-group">
-                        <div class="label-row"><span>RADIUS</span><span id="val-well-radius">220</span></div>
+                        <div class="label-row"><span data-key="lbl_well_radius">RADIUS</span><span id="val-well-radius">220</span></div>
                         <input type="range" id="inp-well-radius" min="60" max="400" step="10" value="220">
                     </div>
                 </div>
