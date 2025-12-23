@@ -910,6 +910,7 @@
         let undoStack = []; 
         let currentLineColor = CONFIG.colors.line;
         const wordFactory = new WordFactory(CONFIG);
+        let isSlowMotion = false;
 
         function resize() {
             width = window.innerWidth;
@@ -1062,6 +1063,7 @@
         let activeState = shatterState;
 
         document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') isSlowMotion = true; // <--- ADD THIS
             if (!audioEngine.initialized) audioEngine.init();
             audioEngine.click();
 
@@ -1099,6 +1101,7 @@
         });
 
         document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') isSlowMotion = false; // <--- ADD THIS
             if (SETTINGS.spawnMode === 'typing' && SETTINGS.typingType === 'enter' && e.key === 'Enter') {
                 const bufferDisplay = document.getElementById('typing-buffer-display');
                 if (typingBuffer.length > 0) {
@@ -1275,6 +1278,11 @@
         });
 
         function update() {
+            // --- TIME DILATION LOGIC ---
+            const targetScale = isSlowMotion ? 0.05 : 1.0;
+            // Smoothly interpolate current timeScale to target (0.1 is the smoothing factor)
+            engine.timing.timeScale += (targetScale - engine.timing.timeScale) * 0.1;
+            // ---------------------------
             frameCount++;
             Engine.update(engine, 1000 / 60);
             engine.world.gravity.y = SETTINGS.gravity;
