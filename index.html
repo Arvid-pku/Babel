@@ -1551,39 +1551,37 @@
         }
 
         function garbageCollect() {
-            // Standard off-screen removal
-            if (frameCount % 60 === 0) {
-                const all = Composite.allBodies(world);
-                const toRemove = [];
-                const now = Date.now();
-                const lifeLimit = SETTINGS.lifetime < 61 ? SETTINGS.lifetime * 1000 : Infinity;
+            const all = Composite.allBodies(world);
+            const toRemove = [];
+            const now = Date.now();
+            const lifeLimit = SETTINGS.lifetime < 61 ? SETTINGS.lifetime * 1000 : Infinity;
 
-                for (let i = 0; i < all.length; i++) {
-                    const b = all[i];
-                    
-                    // Remove if far below screen
-                    if (b.position.y > height + 200) {
+            for (let i = 0; i < all.length; i++) {
+                const b = all[i];
+                
+                // Remove if far below screen
+                if (b.position.y > height + 200) {
+                    toRemove.push(b);
+                    continue;
+                }
+
+                // Remove if lifetime exceeded
+                if (lifeLimit !== Infinity && b.plugin && b.plugin.birthTime) {
+                    const age = now - b.plugin.birthTime;
+                    if (age >= lifeLimit) {
                         toRemove.push(b);
                         continue;
                     }
-
-                    // Remove if lifetime exceeded
-                    if (b.plugin && b.plugin.birthTime) {
-                        const age = now - b.plugin.birthTime;
-                        if (age > lifeLimit) {
-                            toRemove.push(b);
-                        }
-                    }
                 }
-                
-                if (toRemove.length > 0) Composite.remove(world, toRemove);
+            }
+            
+            if (toRemove.length > 0) Composite.remove(world, toRemove);
 
-                // Count cap check
-                const textBodies = Composite.allBodies(world).filter(b => b.plugin && b.plugin.char);
-                if (textBodies.length > CONFIG.maxBodies) {
-                    const excess = textBodies.slice(0, textBodies.length - CONFIG.maxBodies);
-                    Composite.remove(world, excess);
-                }
+            // Count cap check
+            const textBodies = all.filter(b => b.plugin && b.plugin.char);
+            if (textBodies.length > CONFIG.maxBodies) {
+                const excess = textBodies.slice(0, textBodies.length - CONFIG.maxBodies);
+                Composite.remove(world, excess);
             }
         }
 
@@ -1806,6 +1804,7 @@
                         if (remaining < 1000) { // fade out in last 1 second
                             alpha = Math.max(0, remaining / 1000);
                         }
+                        if (remaining <= 0) alpha = 0;
                     }
                     ctx.globalAlpha = alpha;
 
