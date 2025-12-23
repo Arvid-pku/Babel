@@ -938,8 +938,6 @@
         let particleCursor = 0;
         let fanFields = [];
         let gravityWells = [];
-        let portalLines = [];
-        let portalCounter = 0;
         let glitchIntensity = 0;
         let wordQueue = [];
         let walls = []; 
@@ -1234,9 +1232,6 @@
             if (body.label === 'gravity-well') {
                 gravityWells = gravityWells.filter(w => w.body !== body);
             }
-            if (body.label === 'portal-line') {
-                portalLines = portalLines.filter(p => p.body !== body);
-            }
             markStaticDirty();
         }
 
@@ -1319,14 +1314,6 @@
             });
             Composite.add(architectLayer, body);
             undoStack.push(body); 
-            if (props.label === 'portal-line') {
-                const pairId = Math.floor(portalCounter / 2);
-                const role = portalCounter % 2 === 0 ? 'entry' : 'exit';
-                portalCounter++;
-                body.plugin.portalId = pairId;
-                body.plugin.portalRole = role;
-                portalLines.push({ body, pairId, role, angle });
-            }
             markStaticDirty();
         }
 
@@ -1512,27 +1499,13 @@
             if (wordComposite.plugin?.lastTeleportTime && now - wordComposite.plugin.lastTeleportTime < cooldown) return;
             const bodies = Composite.allBodies(wordComposite);
             if (!bodies.length) return;
-            const match = portalLines.find(p => p.body === portalBody);
-            if (!match) return;
-            const partner = portalLines.find(p => p.pairId === match.pairId && p.body !== portalBody);
-            if (!partner) return;
-
             let cx = 0, cy = 0;
             bodies.forEach(b => { cx += b.position.x; cy += b.position.y; });
             cx /= bodies.length; cy /= bodies.length;
-
-            const target = partner.body.position;
-            const angle = partner.body.angle;
-            const nx = Math.sin(angle);
-            const ny = -Math.cos(angle);
-            const exitOffset = SETTINGS.lineThickness + 20;
-            const tx = target.x + nx * exitOffset;
-            const ty = target.y + ny * exitOffset;
-
-            const dx = tx - cx;
-            const dy = ty - cy;
+            const targetX = portalBody.position.x < width / 2 ? width - 30 : 30;
+            const dx = targetX - cx;
             bodies.forEach(b => {
-                Body.translate(b, { x: dx, y: dy });
+                Body.translate(b, { x: dx, y: 0 });
                 Sleeping.set(b, false);
                 b.plugin.lastTeleportTime = now;
             });
@@ -1551,37 +1524,39 @@
         }
 
         function garbageCollect() {
-            const all = Composite.allBodies(world);
-            const toRemove = [];
-            const now = Date.now();
-            const lifeLimit = SETTINGS.lifetime < 61 ? SETTINGS.lifetime * 1000 : Infinity;
+            // Standard off-screen removal
+            if (frameCount % 60 === 0) {
+                const all = Composite.allBodies(world);
+                const toRemove = [];
+                const now = Date.now();
+                const lifeLimit = SETTINGS.lifetime < 61 ? SETTINGS.lifetime * 1000 : Infinity;
 
-            for (let i = 0; i < all.length; i++) {
-                const b = all[i];
-                
-                // Remove if far below screen
-                if (b.position.y > height + 200) {
-                    toRemove.push(b);
-                    continue;
-                }
-
-                // Remove if lifetime exceeded
-                if (lifeLimit !== Infinity && b.plugin && b.plugin.birthTime) {
-                    const age = now - b.plugin.birthTime;
-                    if (age >= lifeLimit) {
+                for (let i = 0; i < all.length; i++) {
+                    const b = all[i];
+                    
+                    // Remove if far below screen
+                    if (b.position.y > height + 200) {
                         toRemove.push(b);
                         continue;
                     }
-                }
-            }
-            
-            if (toRemove.length > 0) Composite.remove(world, toRemove);
 
-            // Count cap check
-            const textBodies = all.filter(b => b.plugin && b.plugin.char);
-            if (textBodies.length > CONFIG.maxBodies) {
-                const excess = textBodies.slice(0, textBodies.length - CONFIG.maxBodies);
-                Composite.remove(world, excess);
+                    // Remove if lifetime exceeded
+                    if (b.plugin && b.plugin.birthTime) {
+                        const age = now - b.plugin.birthTime;
+                        if (age > lifeLimit) {
+                            toRemove.push(b);
+                        }
+                    }
+                }
+                
+                if (toRemove.length > 0) Composite.remove(world, toRemove);
+
+                // Count cap check
+                const textBodies = Composite.allBodies(world).filter(b => b.plugin && b.plugin.char);
+                if (textBodies.length > CONFIG.maxBodies) {
+                    const excess = textBodies.slice(0, textBodies.length - CONFIG.maxBodies);
+                    Composite.remove(world, excess);
+                }
             }
         }
 
@@ -1664,40 +1639,6 @@
                     return;
                 }
 
-                if (b.label === 'portal-line') {
-                    const portalMeta = portalLines.find(p => p.body === b);
-                    const v0 = b.vertices[0];
-                    const v1 = b.vertices[1];
-                    const angle = portalMeta?.angle ?? b.angle;
-                    const nx = Math.sin(angle);
-                    const ny = -Math.cos(angle);
-                    const glowOffset = 10;
-                    const gradient = staticCtx.createLinearGradient(
-                        v0.x + nx * glowOffset, v0.y + ny * glowOffset,
-                        v0.x - nx * glowOffset, v0.y - ny * glowOffset
-                    );
-                    gradient.addColorStop(0, 'rgba(255,255,255,0.15)');
-                    gradient.addColorStop(0.5, 'rgba(255,255,255,0.45)');
-                    gradient.addColorStop(1, 'rgba(255,255,255,0)');
-
-                    staticCtx.save();
-                    staticCtx.beginPath();
-                    staticCtx.moveTo(v0.x, v0.y);
-                    for(let j=1; j<b.vertices.length; j++) {
-                        staticCtx.lineTo(b.vertices[j].x, b.vertices[j].y);
-                    }
-                    staticCtx.lineTo(v0.x, v0.y);
-                    staticCtx.strokeStyle = '#ffffff';
-                    staticCtx.lineWidth = SETTINGS.lineThickness;
-                    staticCtx.stroke();
-
-                    staticCtx.strokeStyle = gradient;
-                    staticCtx.lineWidth = SETTINGS.lineThickness + 8;
-                    staticCtx.stroke();
-                    staticCtx.restore();
-                    continue;
-                }
-
                 if (b.label === 'drawn-line' || b.label === 'kill-line' || b.label === 'bounce-line') {
                     staticCtx.beginPath();
                     staticCtx.moveTo(b.vertices[0].x, b.vertices[0].y);
@@ -1746,13 +1687,6 @@
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.arc(body.position.x, body.position.y, 14, 0, Math.PI*2);
-                ctx.stroke();
-            } else if (body.label === 'portal-line') {
-                const verts = body.vertices;
-                ctx.beginPath();
-                ctx.moveTo(verts[0].x, verts[0].y);
-                for (let j = 1; j < verts.length; j++) ctx.lineTo(verts[j].x, verts[j].y);
-                ctx.closePath();
                 ctx.stroke();
             } else {
                 const verts = body.vertices;
@@ -1804,7 +1738,6 @@
                         if (remaining < 1000) { // fade out in last 1 second
                             alpha = Math.max(0, remaining / 1000);
                         }
-                        if (remaining <= 0) alpha = 0;
                     }
                     ctx.globalAlpha = alpha;
 
@@ -2141,8 +2074,6 @@
             undoStack = [];
             fanFields = [];
             gravityWells = [];
-            portalLines = [];
-            portalCounter = 0;
             resetParticles();
             markStaticDirty();
         });
@@ -2184,7 +2115,6 @@
                 }
                 const len = Math.hypot(b.vertices[1].x - b.vertices[0].x, b.vertices[1].y - b.vertices[0].y);
                 const thickness = Math.hypot(b.vertices[0].x - b.vertices[3].x, b.vertices[0].y - b.vertices[3].y);
-                const portalMeta = b.label === 'portal-line' ? portalLines.find(p => p.body === b) : null;
                 return { 
                     kind: 'line',
                     x: b.position.x, 
@@ -2193,9 +2123,7 @@
                     length: len,
                     thickness: thickness,
                     color: b.render.fillStyle || '#ffffff',
-                    lineType: b.plugin?.lineType || 'standard',
-                    portalId: portalMeta?.pairId,
-                    portalRole: portalMeta?.role
+                    lineType: b.plugin?.lineType || 'standard'
                 };
             });
 
@@ -2216,8 +2144,6 @@
             undoStack = [];
             fanFields = [];
             gravityWells = [];
-            portalLines = [];
-            portalCounter = 0;
             markStaticDirty();
 
             const data = JSON.parse(raw);
@@ -2266,13 +2192,6 @@
                 );
                 const isPortal = lineType === 'portal';
                 const isKill = lineType === 'kill';
-                let portalMeta = null;
-                if (isPortal) {
-                    const role = item.portalRole || 'entry';
-                    const id = (typeof item.portalId === 'number') ? item.portalId : Math.floor(portalCounter / 2);
-                    portalCounter = Math.max(portalCounter, id * 2 + (role === 'exit' ? 2 : 1));
-                    portalMeta = { portalId: id, portalRole: role };
-                }
                 const body = Bodies.rectangle(item.x, item.y, item.length, item.thickness || SETTINGS.lineThickness, {
                     isStatic: true,
                     angle: item.angle,
@@ -2281,18 +2200,10 @@
                     isSensor: isPortal || isKill,
                     render: { visible: true, fillStyle: color },
                     label: isKill ? 'kill-line' : (lineType === 'bounce' ? 'bounce-line' : (isPortal ? 'portal-line' : 'drawn-line')),
-                    plugin: { lineType, ...(portalMeta || {}) }
+                    plugin: { lineType }
                 });
                 Composite.add(architectLayer, body);
                 undoStack.push(body);
-                if (isPortal) {
-                    portalLines.push({
-                        body,
-                        pairId: portalMeta.portalId,
-                        role: portalMeta.portalRole,
-                        angle: item.angle
-                    });
-                }
             });
             markStaticDirty();
         });
