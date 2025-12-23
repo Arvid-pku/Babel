@@ -51,7 +51,7 @@ const TRANSLATIONS = {
         h_portal_orient: "PORTAL ORIENTATION",
         btn_portal_left: "SIDE A",
         btn_portal_right: "SIDE B",
-        desc_portal: "Draw two lines: entry then exit.",
+        desc_portal: "Draw two lines: entry then exit. Enter from the arc side; exit perpendicular on the arc side.",
         h_lineprop: "LINE PROPERTIES",
         lbl_friction: "FRICTION",
         lbl_thickness: "THICKNESS",
@@ -129,7 +129,7 @@ const TRANSLATIONS = {
         h_portal_orient: "传送门方向",
         btn_portal_left: "A侧辉光",
         btn_portal_right: "B侧辉光",
-        desc_portal: "画两条线：先入口，后出口。",
+        desc_portal: "画两条线：先入口，后出口。 从弧线侧进入，从弧线侧垂直射出。",
         h_lineprop: "线条属性",
         lbl_friction: "摩擦力",
         lbl_thickness: "厚度",
@@ -1025,7 +1025,12 @@ Events.on(engine, 'collisionStart', (event) => {
         }
 
         if (portalEntryBody && letterBody) {
-            teleportThroughPortal(portalEntryBody, letterBody.plugin.wordComposite, letterBody.position);
+            teleportThroughPortal(
+                portalEntryBody,
+                letterBody.plugin.wordComposite,
+                letterBody.position,
+                { x: letterBody.velocity.x, y: letterBody.velocity.y }
+            );
             return;
         }
 
@@ -1194,7 +1199,7 @@ function findPortalExitBody(portalId) {
     return null;
 }
 
-function teleportThroughPortal(entryBody, wordComposite, hitPoint) {
+function teleportThroughPortal(entryBody, wordComposite, hitPoint, incomingVelocity) {
     if (!entryBody || !wordComposite) return;
     const portalId = entryBody.plugin?.portalId;
     if (typeof portalId !== 'number') return;
@@ -1219,6 +1224,18 @@ function teleportThroughPortal(entryBody, wordComposite, hitPoint) {
     if (!entryLine || !exitLine) return;
 
     const hit = hitPoint || { x: cx, y: cy };
+    const entryNormal = getPortalNormal(entryBody);
+    const entrySideDist = ((hit.x - entryBody.position.x) * entryNormal.x) + ((hit.y - entryBody.position.y) * entryNormal.y);
+    if (entrySideDist < 0) return;
+
+    let inVx = incomingVelocity?.x ?? 0;
+    let inVy = incomingVelocity?.y ?? 0;
+    let inSpeed = Math.hypot(inVx, inVy);
+    if (inSpeed > 0.01) {
+        const movingTowardDoor = (inVx * entryNormal.x) + (inVy * entryNormal.y);
+        if (movingTowardDoor > 0) return;
+    }
+
     const hx = hit.x - entryLine.a.x;
     const hy = hit.y - entryLine.a.y;
     const alongDist = hx * entryLine.along.x + hy * entryLine.along.y;
@@ -1226,15 +1243,26 @@ function teleportThroughPortal(entryBody, wordComposite, hitPoint) {
 
     const baseX = exitLine.a.x + exitLine.along.x * (t * exitLine.length);
     const baseY = exitLine.a.y + exitLine.along.y * (t * exitLine.length);
-    const n = getPortalNormal(exitBody);
+    const exitNormal = getPortalNormal(exitBody);
     const offset = (getThickness(exitBody) / 2) + 18;
-    const targetX = baseX + n.x * offset;
-    const targetY = baseY + n.y * offset;
+    const targetX = baseX + exitNormal.x * offset;
+    const targetY = baseY + exitNormal.y * offset;
 
     const dx = targetX - cx;
     const dy = targetY - cy;
+    if (inSpeed <= 0.01) {
+        let avgVx = 0;
+        let avgVy = 0;
+        bodies.forEach(b => { avgVx += b.velocity.x; avgVy += b.velocity.y; });
+        avgVx /= bodies.length;
+        avgVy /= bodies.length;
+        inSpeed = Math.hypot(avgVx, avgVy);
+    }
+    const outVx = exitNormal.x * inSpeed;
+    const outVy = exitNormal.y * inSpeed;
     bodies.forEach(b => {
         Body.translate(b, { x: dx, y: dy });
+        Body.setVelocity(b, { x: outVx, y: outVy });
         Sleeping.set(b, false);
         if (b.plugin) b.plugin.lastTeleportTime = now;
     });
@@ -1395,6 +1423,29 @@ function renderStaticLayer() {
             staticCtx.beginPath();
             staticCtx.moveTo(line.a.x, line.a.y);
             staticCtx.lineTo(line.b.x, line.b.y);
+            staticCtx.stroke();
+
+            const midX = (line.a.x + line.b.x) / 2;
+            const midY = (line.a.y + line.b.y) / 2;
+            const arcSpan = Math.min(52, line.length * 0.8);
+            const half = arcSpan / 2;
+            const p1X = midX - line.along.x * half;
+            const p1Y = midY - line.along.y * half;
+            const p2X = midX + line.along.x * half;
+            const p2Y = midY + line.along.y * half;
+            const bulge = Math.min(28, arcSpan * 0.65);
+            const cX = midX + n.x * bulge;
+            const cY = midY + n.y * bulge;
+
+            staticCtx.lineCap = 'round';
+            staticCtx.globalAlpha = 0.85;
+            staticCtx.strokeStyle = '#ffffff';
+            staticCtx.lineWidth = Math.max(1, thickness * 0.3);
+            staticCtx.shadowColor = CONFIG.colors.portal;
+            staticCtx.shadowBlur = 12;
+            staticCtx.beginPath();
+            staticCtx.moveTo(p1X, p1Y);
+            staticCtx.quadraticCurveTo(cX, cY, p2X, p2Y);
             staticCtx.stroke();
             staticCtx.restore();
             return;
