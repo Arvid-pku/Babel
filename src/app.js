@@ -1830,7 +1830,11 @@ const setMode = (mode) => {
     document.body.classList.remove('mode-drag', 'mode-shatter', 'mode-draw');
     document.body.classList.add(`mode-${mode}`);
     if (mode !== 'draw') drawState.reset();
-    if (mode === 'draw') setActiveTab('tab-arch');
+    if (mode === 'draw') {
+        setArchitectTool('line');
+    } else {
+        setActiveTab('tab-sim');
+    }
 };
 
 btnDrag.addEventListener('click', () => setMode('drag'));
@@ -1861,6 +1865,14 @@ function updateArchitectToolSettings() {
     if (archSettingsEraser) archSettingsEraser.style.display = showEraser ? 'block' : 'none';
 }
 
+const ARCH_TOOL_BODY_CLASS = {
+    freehand: 'tool-free',
+    line: 'tool-line',
+    fan: 'tool-fan',
+    well: 'tool-well',
+    eraser: 'tool-erase'
+};
+
 const setArchitectTool = (tool) => {
     SETTINGS.architectTool = tool;
     btnToolFree.classList.toggle('active', tool === 'freehand');
@@ -1869,8 +1881,8 @@ const setArchitectTool = (tool) => {
     btnToolWell.classList.toggle('active', tool === 'well');
     btnToolErase.classList.toggle('active', tool === 'eraser');
 
-    document.body.classList.remove('tool-free', 'tool-line', 'tool-fan', 'tool-well', 'tool-erase');
-    document.body.classList.add(`tool-${tool}`);
+    document.body.classList.remove(...Object.values(ARCH_TOOL_BODY_CLASS), 'tool-freehand', 'tool-eraser');
+    document.body.classList.add(ARCH_TOOL_BODY_CLASS[tool] || `tool-${tool}`);
     updateArchitectToolSettings();
     if (SETTINGS.interactionMode === 'draw') setActiveTab('tab-arch');
 };
@@ -1880,9 +1892,8 @@ btnToolLine.addEventListener('click', () => setArchitectTool('line'));
 btnToolFan.addEventListener('click', () => setArchitectTool('fan'));
 btnToolWell.addEventListener('click', () => setArchitectTool('well'));
 btnToolErase.addEventListener('click', () => setArchitectTool('eraser'));
-document.body.classList.add('tool-free');
-updateArchitectToolSettings();
-setMode('shatter');
+setArchitectTool(SETTINGS.architectTool);
+setMode(SETTINGS.interactionMode);
 
 // Trigger Mode Toggles
 const btnTrigClick = document.getElementById('btn-trigger-click');
