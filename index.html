@@ -119,56 +119,66 @@
                         <button id="btn-load" style="flex:1;" data-key="btn_load">LOAD LAYOUT</button>
                     </div>
 
-                    <h2 data-key="h_linetype">LINE TYPE</h2>
-                    <div class="control-group mode-toggle-group">
-                        <button id="btn-line-standard" class="active" data-key="btn_standard">STANDARD</button>
-                        <button id="btn-line-kill" style="color:#ff7777;" data-key="btn_kill">KILL ZONE</button>
-                        <button id="btn-line-bounce" style="color:#77aaff;" data-key="btn_bounce">BOUNCE PAD</button>
-                        <button id="btn-line-portal" style="color:#66ffe6;" data-key="btn_portal">PORTAL</button>
+                    <div id="arch-settings-eraser" style="display:none;">
+                        <div style="font-size:9px; color:#666;" data-key="desc_eraser">Click a construct to delete it.</div>
                     </div>
-                    <div style="font-size:9px; color:#666;" data-key="desc_lines">Kill zones vaporize text; bounce pads add 1.5x restitution.</div>
-                    <div id="portal-controls" class="control-group" style="display:none;">
-                        <div class="label-row"><span data-key="h_portal_orient">PORTAL ORIENTATION</span></div>
-                        <div class="mode-toggle-group">
-                            <button id="btn-portal-left" class="active" data-key="btn_portal_left">SIDE A</button>
-                            <button id="btn-portal-right" data-key="btn_portal_right">SIDE B</button>
+
+                    <div id="arch-settings-lines">
+                        <h2 data-key="h_linetype">LINE TYPE</h2>
+                        <div class="control-group mode-toggle-group">
+                            <button id="btn-line-standard" class="active" data-key="btn_standard">STANDARD</button>
+                            <button id="btn-line-kill" style="color:#ff7777;" data-key="btn_kill">KILL ZONE</button>
+                            <button id="btn-line-bounce" style="color:#77aaff;" data-key="btn_bounce">BOUNCE PAD</button>
+                            <button id="btn-line-portal" style="color:#66ffe6;" data-key="btn_portal">PORTAL</button>
                         </div>
-                        <div style="font-size:9px; color:#666; margin-top:6px;" data-key="desc_portal">Draw two lines: entry then exit. Enter from the arc side; exit perpendicular on the arc side.</div>
-                    </div>
+                        <div style="font-size:9px; color:#666;" data-key="desc_lines">Kill zones vaporize text; bounce pads add 1.5x restitution.</div>
+                        <div id="portal-controls" class="control-group" style="display:none;">
+                            <div class="label-row"><span data-key="h_portal_orient">PORTAL ORIENTATION</span></div>
+                            <div class="mode-toggle-group">
+                                <button id="btn-portal-left" class="active" data-key="btn_portal_left">SIDE A</button>
+                                <button id="btn-portal-right" data-key="btn_portal_right">SIDE B</button>
+                            </div>
+                            <div style="font-size:9px; color:#666; margin-top:6px;" data-key="desc_portal">Draw two lines: entry then exit. Enter from the arc side; exit perpendicular on the arc side.</div>
+                        </div>
 
-                    <h2 data-key="h_lineprop">LINE PROPERTIES</h2>
-                    <div class="control-group">
-                        <div class="label-row"><span data-key="lbl_friction">FRICTION</span><span id="val-friction">0.1</span></div>
-                        <input type="range" id="inp-friction" min="0" max="1" step="0.05" value="0.1">
-                    </div>
-                    <div class="control-group">
-                        <div class="label-row"><span data-key="lbl_thickness">THICKNESS</span><span id="val-thickness">4</span></div>
-                        <input type="range" id="inp-thickness" min="2" max="40" step="1" value="4">
-                    </div>
-
-                    <h2 data-key="h_wind">WIND</h2>
-                    <div class="control-group">
-                        <div class="label-row"><span data-key="lbl_fan_dir">FAN DIRECTION</span></div>
-                        <div class="mode-toggle-group">
-                            <button id="btn-fan-left">←</button>
-                            <button id="btn-fan-up" class="active">↑</button>
-                            <button id="btn-fan-right">→</button>
-                            <button id="btn-fan-down">↓</button>
+                        <h2 data-key="h_lineprop">LINE PROPERTIES</h2>
+                        <div class="control-group">
+                            <div class="label-row"><span data-key="lbl_friction">FRICTION</span><span id="val-friction">0.1</span></div>
+                            <input type="range" id="inp-friction" min="0" max="1" step="0.05" value="0.1">
+                        </div>
+                        <div class="control-group">
+                            <div class="label-row"><span data-key="lbl_thickness">THICKNESS</span><span id="val-thickness">4</span></div>
+                            <input type="range" id="inp-thickness" min="2" max="40" step="1" value="4">
                         </div>
                     </div>
-                    <div class="control-group">
-                        <div class="label-row"><span data-key="lbl_fan_str">FAN STRENGTH</span><span id="val-fan-strength">0.0006</span></div>
-                        <input type="range" id="inp-fan-strength" min="0" max="0.002" step="0.0001" value="0.0006">
+
+                    <div id="arch-settings-fan">
+                        <h2 data-key="h_wind">WIND</h2>
+                        <div class="control-group">
+                            <div class="label-row"><span data-key="lbl_fan_dir">FAN DIRECTION</span></div>
+                            <div class="mode-toggle-group">
+                                <button id="btn-fan-left">←</button>
+                                <button id="btn-fan-up" class="active">↑</button>
+                                <button id="btn-fan-right">→</button>
+                                <button id="btn-fan-down">↓</button>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <div class="label-row"><span data-key="lbl_fan_str">FAN STRENGTH</span><span id="val-fan-strength">0.0006</span></div>
+                            <input type="range" id="inp-fan-strength" min="0" max="0.002" step="0.0001" value="0.0006">
+                        </div>
                     </div>
 
-                    <h2 data-key="h_well">GRAVITY WELL</h2>
-                    <div class="control-group">
-                        <div class="label-row"><span data-key="lbl_well_str">STRENGTH</span><span id="val-well-strength">0.0009</span></div>
-                        <input type="range" id="inp-well-strength" min="0" max="0.004" step="0.0001" value="0.0009">
-                    </div>
-                    <div class="control-group">
-                        <div class="label-row"><span data-key="lbl_well_radius">RADIUS</span><span id="val-well-radius">220</span></div>
-                        <input type="range" id="inp-well-radius" min="60" max="400" step="10" value="220">
+                    <div id="arch-settings-well">
+                        <h2 data-key="h_well">GRAVITY WELL</h2>
+                        <div class="control-group">
+                            <div class="label-row"><span data-key="lbl_well_str">STRENGTH</span><span id="val-well-strength">0.0009</span></div>
+                            <input type="range" id="inp-well-strength" min="0" max="0.004" step="0.0001" value="0.0009">
+                        </div>
+                        <div class="control-group">
+                            <div class="label-row"><span data-key="lbl_well_radius">RADIUS</span><span id="val-well-radius">220</span></div>
+                            <input type="range" id="inp-well-radius" min="60" max="400" step="10" value="220">
+                        </div>
                     </div>
                 </div>
 
@@ -178,6 +188,13 @@
                         <div class="label-row"><span data-key="lbl_text_size">TEXT SIZE (RESETS)</span><span id="val-fontsize">22</span></div>
                         <input type="range" id="inp-fontsize" min="10" max="60" step="2" value="22">
                     </div>
+
+                    <h2 data-key="h_construct_vis">CONSTRUCT VISIBILITY</h2>
+                    <div class="control-group mode-toggle-group">
+                        <button id="btn-constructs-show" class="active" data-key="btn_constructs_show">VISIBLE</button>
+                        <button id="btn-constructs-hide" data-key="btn_constructs_hide">HIDDEN</button>
+                    </div>
+                    <div style="font-size:9px; color:#666;" data-key="desc_constructs_hide">Hides all built objects; effects remain active.</div>
 
                     <h2 data-key="h_palette">PALETTE</h2>
                     <div class="control-group">

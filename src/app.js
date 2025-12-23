@@ -17,6 +17,11 @@ const TRANSLATIONS = {
         tab_arch: "ARCH",
         tab_vis: "VIS",
         tab_data: "DATA",
+        h_construct_vis: "CONSTRUCT VISIBILITY",
+        btn_constructs_show: "VISIBLE",
+        btn_constructs_hide: "HIDDEN",
+        desc_constructs_hide: "Hides all built objects; effects remain active.",
+        desc_eraser: "Click a construct to delete it.",
         h_spawn: "SPAWN MODE",
         btn_auto_drop: "AUTO DROP",
         btn_type_input: "TYPE INPUT",
@@ -99,6 +104,11 @@ const TRANSLATIONS = {
         tab_arch: "建造",
         tab_vis: "视觉",
         tab_data: "数据",
+        h_construct_vis: "建造可见性",
+        btn_constructs_show: "显示",
+        btn_constructs_hide: "隐藏",
+        desc_constructs_hide: "隐藏所有已建物体，但效果仍生效。",
+        desc_eraser: "点击已建物体以删除。",
         h_spawn: "生成模式",
         btn_auto_drop: "自动掉落",
         btn_type_input: "键盘输入",
@@ -170,13 +180,18 @@ const TRANSLATIONS = {
 const tabBtns = document.querySelectorAll('.tab-btn');
 const tabSections = document.querySelectorAll('.tab-section');
 
+function setActiveTab(targetId) {
+    tabBtns.forEach(b => b.classList.remove('active'));
+    tabSections.forEach(s => s.classList.remove('active'));
+    const btn = Array.from(tabBtns).find(b => b.dataset.target === targetId);
+    if (btn) btn.classList.add('active');
+    const target = document.getElementById(targetId);
+    if (target) target.classList.add('active');
+}
+
 tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-        tabBtns.forEach(b => b.classList.remove('active'));
-        tabSections.forEach(s => s.classList.remove('active'));
-        btn.classList.add('active');
-        const target = document.getElementById(btn.dataset.target);
-        if(target) target.classList.add('active');
+        setActiveTab(btn.dataset.target);
     });
 });
 
@@ -412,6 +427,7 @@ const SETTINGS = {
     force: 0.05,
     spawnInterval: 35,
     loop: true,
+    hideConstructs: false,
     interactionMode: 'shatter', 
     architectTool: 'freehand', 
     triggerMode: 'hover', 
@@ -1352,6 +1368,8 @@ function renderStaticLayer() {
     }
     staticCtx.restore();
 
+    if (SETTINGS.hideConstructs) return;
+
     const architectBodies = Composite.allBodies(architectLayer);
     architectBodies.forEach(b => {
         if (b.label === 'fan-field') {
@@ -1484,6 +1502,7 @@ function renderStaticLayer() {
 }
 
 function drawHoveredArchitect(ctx) {
+    if (SETTINGS.hideConstructs) return;
     const body = drawState.hoveredEraseBody;
     if (!body) return;
     ctx.save();
@@ -1687,6 +1706,18 @@ const btnFanUp = document.getElementById('btn-fan-up');
 const btnFanRight = document.getElementById('btn-fan-right');
 const btnFanDown = document.getElementById('btn-fan-down');
 
+const btnConstructsShow = document.getElementById('btn-constructs-show');
+const btnConstructsHide = document.getElementById('btn-constructs-hide');
+const setConstructVisibility = (visible) => {
+    SETTINGS.hideConstructs = !visible;
+    btnConstructsShow?.classList.toggle('active', visible);
+    btnConstructsHide?.classList.toggle('active', !visible);
+    markStaticDirty();
+};
+btnConstructsShow?.addEventListener('click', () => setConstructVisibility(true));
+btnConstructsHide?.addEventListener('click', () => setConstructVisibility(false));
+setConstructVisibility(!SETTINGS.hideConstructs);
+
 const setFanDirection = (dir) => {
     SETTINGS.fanDirection = dir;
     btnFanLeft.classList.toggle('active', dir.x === -1 && dir.y === 0);
@@ -1799,6 +1830,7 @@ const setMode = (mode) => {
     document.body.classList.remove('mode-drag', 'mode-shatter', 'mode-draw');
     document.body.classList.add(`mode-${mode}`);
     if (mode !== 'draw') drawState.reset();
+    if (mode === 'draw') setActiveTab('tab-arch');
 };
 
 btnDrag.addEventListener('click', () => setMode('drag'));
@@ -1811,6 +1843,23 @@ const btnToolLine = document.getElementById('btn-tool-line');
 const btnToolFan = document.getElementById('btn-tool-fan');
 const btnToolWell = document.getElementById('btn-tool-well');
 const btnToolErase = document.getElementById('btn-tool-erase');
+const archSettingsLines = document.getElementById('arch-settings-lines');
+const archSettingsFan = document.getElementById('arch-settings-fan');
+const archSettingsWell = document.getElementById('arch-settings-well');
+const archSettingsEraser = document.getElementById('arch-settings-eraser');
+
+function updateArchitectToolSettings() {
+    const tool = SETTINGS.architectTool;
+    const showLines = tool === 'freehand' || tool === 'line';
+    const showFan = tool === 'fan';
+    const showWell = tool === 'well';
+    const showEraser = tool === 'eraser';
+
+    if (archSettingsLines) archSettingsLines.style.display = showLines ? 'block' : 'none';
+    if (archSettingsFan) archSettingsFan.style.display = showFan ? 'block' : 'none';
+    if (archSettingsWell) archSettingsWell.style.display = showWell ? 'block' : 'none';
+    if (archSettingsEraser) archSettingsEraser.style.display = showEraser ? 'block' : 'none';
+}
 
 const setArchitectTool = (tool) => {
     SETTINGS.architectTool = tool;
@@ -1822,6 +1871,8 @@ const setArchitectTool = (tool) => {
 
     document.body.classList.remove('tool-free', 'tool-line', 'tool-fan', 'tool-well', 'tool-erase');
     document.body.classList.add(`tool-${tool}`);
+    updateArchitectToolSettings();
+    if (SETTINGS.interactionMode === 'draw') setActiveTab('tab-arch');
 };
 
 btnToolFree.addEventListener('click', () => setArchitectTool('freehand'));
@@ -1830,6 +1881,7 @@ btnToolFan.addEventListener('click', () => setArchitectTool('fan'));
 btnToolWell.addEventListener('click', () => setArchitectTool('well'));
 btnToolErase.addEventListener('click', () => setArchitectTool('eraser'));
 document.body.classList.add('tool-free');
+updateArchitectToolSettings();
 setMode('shatter');
 
 // Trigger Mode Toggles
