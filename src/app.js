@@ -1306,13 +1306,13 @@ function garbageCollect() {
             }
         }
 
-        if (toRemove.length > 0) Composite.remove(world, toRemove);
+        if (toRemove.length > 0) Composite.remove(world, toRemove, true);
 
         // Count cap check
         const textBodies = Composite.allBodies(world).filter(b => b.plugin && b.plugin.char);
         if (textBodies.length > CONFIG.maxBodies) {
             const excess = textBodies.slice(0, textBodies.length - CONFIG.maxBodies);
-            Composite.remove(world, excess);
+            Composite.remove(world, excess, true);
         }
     }
 }
