@@ -219,6 +219,7 @@
                         <button id="btn-tool-free" class="active" data-key="btn_free">FREE</button>
                         <button id="btn-tool-line" data-key="btn_line">LINE</button>
                         <button id="btn-tool-fan" data-key="btn_fan">FAN</button>
+                        <button id="btn-tool-well">WELL</button>
                         <button id="btn-tool-erase" data-key="btn_erase">ERASE</button>
                     </div>
                 </div>
@@ -303,6 +304,7 @@
                         <button id="btn-line-standard" class="active" data-key="btn_standard">STANDARD</button>
                         <button id="btn-line-kill" style="color:#ff7777;" data-key="btn_kill">KILL ZONE</button>
                         <button id="btn-line-bounce" style="color:#77aaff;" data-key="btn_bounce">BOUNCE PAD</button>
+                        <button id="btn-line-portal" style="color:#66ffe6;">PORTAL</button>
                     </div>
                     <div style="font-size:9px; color:#666;" data-key="desc_lines">Kill zones vaporize text; bounce pads add 1.5x restitution.</div>
 
@@ -329,6 +331,16 @@
                     <div class="control-group">
                         <div class="label-row"><span data-key="lbl_fan_str">FAN STRENGTH</span><span id="val-fan-strength">0.0006</span></div>
                         <input type="range" id="inp-fan-strength" min="0" max="0.002" step="0.0001" value="0.0006">
+                    </div>
+
+                    <h2>GRAVITY WELL</h2>
+                    <div class="control-group">
+                        <div class="label-row"><span>STRENGTH</span><span id="val-well-strength">0.0009</span></div>
+                        <input type="range" id="inp-well-strength" min="0" max="0.004" step="0.0001" value="0.0009">
+                    </div>
+                    <div class="control-group">
+                        <div class="label-row"><span>RADIUS</span><span id="val-well-radius">220</span></div>
+                        <input type="range" id="inp-well-radius" min="60" max="400" step="10" value="220">
                     </div>
                 </div>
 
@@ -808,6 +820,8 @@
             fanStrength: 0.0006,
             fanRadius: 180,
             fanDirection: { x: 0, y: -1 },
+            wellStrength: 0.0009,
+            wellRadius: 220,
             lifetime: 61 // 61 = Infinity
         };
 
@@ -833,7 +847,7 @@
             fontSize: 22, letterSpacing: 16, disruptRadius: 80, maxBodies: 700,
             colors: { 
                 english: '#cccccc', hebrew: '#eebb99', shard: '#555', dust: '#777',
-                kill: '#ff5555', bounce: '#5b8dff', line: '#ffffff'
+                kill: '#ff5555', bounce: '#5b8dff', portal: '#66ffe6', line: '#ffffff'
             },
             capitalMassBoost: 1.5,
             capitalSizeBoost: 1.15
@@ -894,7 +908,7 @@
                 const composite = Composite.create({ label: 'word' });
                 Composite.add(composite, letterBodies);
                 Composite.add(composite, constraints);
-                composite.plugin = { intact: true, text, birthTime: now };
+                composite.plugin = { intact: true, text, birthTime: now, lastTeleportTime: 0 };
                 letterBodies.forEach(b => { b.plugin.wordComposite = composite; });
                 return composite;
             }
@@ -923,6 +937,7 @@
         const particles = Array.from({ length: PARTICLE_POOL_SIZE }, () => new Particle());
         let particleCursor = 0;
         let fanFields = [];
+        let gravityWells = [];
         let glitchIntensity = 0;
         let wordQueue = [];
         let walls = []; 
@@ -1039,6 +1054,10 @@
                 }
                 if (SETTINGS.architectTool === 'fan') {
                     createFan(pt);
+                    return;
+                }
+                if (SETTINGS.architectTool === 'well') {
+                    createWell(pt);
                     return;
                 }
                 this.isDrawing = true;
@@ -1210,6 +1229,9 @@
             if (body.label === 'fan-field') {
                 fanFields = fanFields.filter(f => f.body !== body);
             }
+            if (body.label === 'gravity-well') {
+                gravityWells = gravityWells.filter(w => w.body !== body);
+            }
             markStaticDirty();
         }
 
@@ -1232,6 +1254,9 @@
             if (SETTINGS.lineType === 'bounce') {
                 return { color: CONFIG.colors.bounce, isSensor: false, restitution: 1.5, label: 'bounce-line', friction: 0.05 };
             }
+            if (SETTINGS.lineType === 'portal') {
+                return { color: CONFIG.colors.portal, isSensor: true, restitution: 0, label: 'portal-line' };
+            }
             return { color: currentLineColor || CONFIG.colors.line, isSensor: false, restitution: 0, label: 'drawn-line', friction: SETTINGS.lineFriction };
         }
 
@@ -1251,6 +1276,23 @@
                 radius: SETTINGS.fanRadius,
                 dir: { ...dir },
                 strength: SETTINGS.fanStrength
+            });
+            markStaticDirty();
+        }
+
+        function createWell(pt) {
+            const body = Bodies.circle(pt.x, pt.y, 14, {
+                isStatic: true,
+                isSensor: true,
+                render: { visible: true, fillStyle: '#552266' },
+                label: 'gravity-well'
+            });
+            Composite.add(architectLayer, body);
+            undoStack.push(body);
+            gravityWells.push({
+                body,
+                radius: SETTINGS.wellRadius,
+                strength: SETTINGS.wellStrength
             });
             markStaticDirty();
         }
@@ -1308,6 +1350,7 @@
                 const b = pair.bodyB;
                 const killBody = [a, b].find(body => body.label === 'kill-line');
                 const bounceBody = [a, b].find(body => body.label === 'bounce-line');
+                const portalBody = [a, b].find(body => body.label === 'portal-line');
                 const letterBody = [a, b].find(body => body.plugin && body.plugin.wordComposite);
 
                 if (killBody && letterBody && letterBody.plugin.wordComposite?.plugin?.intact) {
@@ -1323,6 +1366,11 @@
                     Sleeping.set(letterBody, false);
                     const pan = (letterBody.position.x / width) * 2 - 1;
                     audioEngine.bounce(pan);
+                }
+
+                if (portalBody && letterBody) {
+                    teleportThroughPortal(portalBody, letterBody.plugin.wordComposite);
+                    return;
                 }
 
                 const letters = [a, b].filter(body => body.plugin && body.plugin.char);
@@ -1361,6 +1409,7 @@
             }
             
             applyFanForces();
+            applyGravityWells();
             updateAudioTension();
             garbageCollect();
             draw();
@@ -1424,6 +1473,43 @@
                     }
                 });
             });
+        }
+
+        function applyGravityWells() {
+            if (gravityWells.length === 0) return;
+            const bodies = Composite.allBodies(world).filter(b => b.plugin && b.plugin.char);
+            gravityWells.forEach(well => {
+                bodies.forEach(b => {
+                    const dx = well.body.position.x - b.position.x;
+                    const dy = well.body.position.y - b.position.y;
+                    const dist = Math.hypot(dx, dy) || 0.0001;
+                    if (dist < well.radius) {
+                        const falloff = 1 - (dist / well.radius);
+                        const forceMag = well.strength * falloff * b.mass;
+                        Body.applyForce(b, b.position, { x: (dx / dist) * forceMag, y: (dy / dist) * forceMag });
+                    }
+                });
+            });
+        }
+
+        function teleportThroughPortal(portalBody, wordComposite) {
+            if (!portalBody || !wordComposite) return;
+            const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            const cooldown = 200;
+            if (wordComposite.plugin?.lastTeleportTime && now - wordComposite.plugin.lastTeleportTime < cooldown) return;
+            const bodies = Composite.allBodies(wordComposite);
+            if (!bodies.length) return;
+            let cx = 0, cy = 0;
+            bodies.forEach(b => { cx += b.position.x; cy += b.position.y; });
+            cx /= bodies.length; cy /= bodies.length;
+            const targetX = portalBody.position.x < width / 2 ? width - 30 : 30;
+            const dx = targetX - cx;
+            bodies.forEach(b => {
+                Body.translate(b, { x: dx, y: 0 });
+                Sleeping.set(b, false);
+                b.plugin.lastTeleportTime = now;
+            });
+            if (wordComposite.plugin) wordComposite.plugin.lastTeleportTime = now;
         }
 
         function updateAudioTension() {
@@ -1532,6 +1618,26 @@
                     staticCtx.restore();
                     return;
                 }
+                if (b.label === 'gravity-well') {
+                    const well = gravityWells.find(w => w.body === b);
+                    const radius = well?.radius || SETTINGS.wellRadius;
+                    staticCtx.save();
+                    staticCtx.translate(b.position.x, b.position.y);
+                    staticCtx.strokeStyle = '#aa88ff';
+                    staticCtx.lineWidth = 1;
+                    staticCtx.globalAlpha = 0.25;
+                    staticCtx.beginPath();
+                    staticCtx.arc(0, 0, radius, 0, Math.PI*2);
+                    staticCtx.stroke();
+                    staticCtx.globalAlpha = 1;
+                    staticCtx.beginPath();
+                    staticCtx.arc(0, 0, 14, 0, Math.PI*2);
+                    staticCtx.fillStyle = '#552266';
+                    staticCtx.fill();
+                    staticCtx.stroke();
+                    staticCtx.restore();
+                    return;
+                }
 
                 if (b.label === 'drawn-line' || b.label === 'kill-line' || b.label === 'bounce-line') {
                     staticCtx.beginPath();
@@ -1572,6 +1678,15 @@
                 ctx.stroke();
                 ctx.beginPath();
                 ctx.arc(body.position.x, body.position.y, 12, 0, Math.PI*2);
+                ctx.stroke();
+            } else if (body.label === 'gravity-well') {
+                const well = gravityWells.find(w => w.body === body);
+                const radius = well?.radius || SETTINGS.wellRadius;
+                ctx.beginPath();
+                ctx.arc(body.position.x, body.position.y, radius, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(body.position.x, body.position.y, 14, 0, Math.PI*2);
                 ctx.stroke();
             } else {
                 const verts = body.vertices;
@@ -1719,17 +1834,20 @@
         const btnLineStandard = document.getElementById('btn-line-standard');
         const btnLineKill = document.getElementById('btn-line-kill');
         const btnLineBounce = document.getElementById('btn-line-bounce');
+        const btnLinePortal = document.getElementById('btn-line-portal');
 
         const setLineType = (type) => {
             SETTINGS.lineType = type;
             btnLineStandard.classList.toggle('active', type === 'standard');
             btnLineKill.classList.toggle('active', type === 'kill');
             btnLineBounce.classList.toggle('active', type === 'bounce');
+            btnLinePortal.classList.toggle('active', type === 'portal');
         };
 
         btnLineStandard.addEventListener('click', () => setLineType('standard'));
         btnLineKill.addEventListener('click', () => setLineType('kill'));
         btnLineBounce.addEventListener('click', () => setLineType('bounce'));
+        btnLinePortal.addEventListener('click', () => setLineType('portal'));
 
         const btnFanLeft = document.getElementById('btn-fan-left');
         const btnFanUp = document.getElementById('btn-fan-up');
@@ -1742,6 +1860,7 @@
             btnFanUp.classList.toggle('active', dir.x === 0 && dir.y === -1);
             btnFanRight.classList.toggle('active', dir.x === 1 && dir.y === 0);
             btnFanDown.classList.toggle('active', dir.x === 0 && dir.y === 1);
+            markStaticDirty();
         };
 
         btnFanLeft.addEventListener('click', () => setFanDirection({ x: -1, y: 0 }));
@@ -1756,6 +1875,25 @@
             SETTINGS.fanStrength = val;
             fanStrengthVal.innerText = val.toFixed(4);
             fanFields.forEach(f => f.strength = val);
+        });
+
+        const wellStrengthSlider = document.getElementById('inp-well-strength');
+        const wellStrengthVal = document.getElementById('val-well-strength');
+        wellStrengthSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            SETTINGS.wellStrength = val;
+            wellStrengthVal.innerText = val.toFixed(4);
+            gravityWells.forEach(w => w.strength = val);
+        });
+
+        const wellRadiusSlider = document.getElementById('inp-well-radius');
+        const wellRadiusVal = document.getElementById('val-well-radius');
+        wellRadiusSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            SETTINGS.wellRadius = val;
+            wellRadiusVal.innerText = val;
+            gravityWells.forEach(w => w.radius = val);
+            markStaticDirty();
         });
 
         const volMasterSlider = document.getElementById('inp-vol');
@@ -1838,6 +1976,7 @@
         const btnToolFree = document.getElementById('btn-tool-free');
         const btnToolLine = document.getElementById('btn-tool-line');
         const btnToolFan = document.getElementById('btn-tool-fan');
+        const btnToolWell = document.getElementById('btn-tool-well');
         const btnToolErase = document.getElementById('btn-tool-erase');
 
         const setArchitectTool = (tool) => {
@@ -1845,15 +1984,17 @@
             btnToolFree.classList.toggle('active', tool === 'freehand');
             btnToolLine.classList.toggle('active', tool === 'line');
             btnToolFan.classList.toggle('active', tool === 'fan');
+            btnToolWell.classList.toggle('active', tool === 'well');
             btnToolErase.classList.toggle('active', tool === 'eraser');
             
-            document.body.classList.remove('tool-free', 'tool-line', 'tool-fan', 'tool-erase');
+            document.body.classList.remove('tool-free', 'tool-line', 'tool-fan', 'tool-well', 'tool-erase');
             document.body.classList.add(`tool-${tool}`);
         };
 
         btnToolFree.addEventListener('click', () => setArchitectTool('freehand'));
         btnToolLine.addEventListener('click', () => setArchitectTool('line'));
         btnToolFan.addEventListener('click', () => setArchitectTool('fan'));
+        btnToolWell.addEventListener('click', () => setArchitectTool('well'));
         btnToolErase.addEventListener('click', () => setArchitectTool('eraser'));
         document.body.classList.add('tool-free');
         setMode('shatter');
@@ -1932,6 +2073,7 @@
             refillQueue();
             undoStack = [];
             fanFields = [];
+            gravityWells = [];
             resetParticles();
             markStaticDirty();
         });
@@ -1959,6 +2101,16 @@
                         dir: fan?.dir || b.plugin?.dir || { x: 0, y: -1 },
                         strength: fan?.strength || SETTINGS.fanStrength,
                         radius: fan?.radius || SETTINGS.fanRadius
+                    };
+                }
+                if (b.label === 'gravity-well') {
+                    const well = gravityWells.find(w => w.body === b);
+                    return {
+                        kind: 'well',
+                        x: b.position.x,
+                        y: b.position.y,
+                        strength: well?.strength || SETTINGS.wellStrength,
+                        radius: well?.radius || SETTINGS.wellRadius
                     };
                 }
                 const len = Math.hypot(b.vertices[1].x - b.vertices[0].x, b.vertices[1].y - b.vertices[0].y);
@@ -1991,6 +2143,7 @@
             Composite.clear(architectLayer, false, true);
             undoStack = [];
             fanFields = [];
+            gravityWells = [];
             markStaticDirty();
 
             const data = JSON.parse(raw);
@@ -2013,17 +2166,40 @@
                     });
                     return;
                 }
+                if (item.kind === 'well') {
+                    const body = Bodies.circle(item.x, item.y, 14, {
+                        isStatic: true,
+                        isSensor: true,
+                        render: { visible: true, fillStyle: '#552266' },
+                        label: 'gravity-well'
+                    });
+                    Composite.add(architectLayer, body);
+                    undoStack.push(body);
+                    gravityWells.push({
+                        body,
+                        radius: item.radius || SETTINGS.wellRadius,
+                        strength: item.strength || SETTINGS.wellStrength
+                    });
+                    return;
+                }
 
                 const lineType = item.lineType || 'standard';
-                const color = item.color || (lineType === 'kill' ? CONFIG.colors.kill : (lineType === 'bounce' ? CONFIG.colors.bounce : currentLineColor));
+                const color = item.color || (
+                    lineType === 'kill' ? CONFIG.colors.kill :
+                    lineType === 'bounce' ? CONFIG.colors.bounce :
+                    lineType === 'portal' ? CONFIG.colors.portal :
+                    currentLineColor
+                );
+                const isPortal = lineType === 'portal';
+                const isKill = lineType === 'kill';
                 const body = Bodies.rectangle(item.x, item.y, item.length, item.thickness || SETTINGS.lineThickness, {
                     isStatic: true,
                     angle: item.angle,
                     friction: SETTINGS.lineFriction,
                     restitution: lineType === 'bounce' ? 1.5 : 0,
-                    isSensor: lineType === 'kill',
+                    isSensor: isPortal || isKill,
                     render: { visible: true, fillStyle: color },
-                    label: lineType === 'kill' ? 'kill-line' : (lineType === 'bounce' ? 'bounce-line' : 'drawn-line'),
+                    label: isKill ? 'kill-line' : (lineType === 'bounce' ? 'bounce-line' : (isPortal ? 'portal-line' : 'drawn-line')),
                     plugin: { lineType }
                 });
                 Composite.add(architectLayer, body);
@@ -2105,6 +2281,10 @@
         setFanDirection(SETTINGS.fanDirection);
         fanStrengthVal.innerText = SETTINGS.fanStrength.toFixed(4);
         fanStrengthSlider.value = SETTINGS.fanStrength;
+        wellStrengthVal.innerText = SETTINGS.wellStrength.toFixed(4);
+        wellStrengthSlider.value = SETTINGS.wellStrength;
+        wellRadiusVal.innerText = SETTINGS.wellRadius;
+        wellRadiusSlider.value = SETTINGS.wellRadius;
 
         update();
 
